@@ -17,6 +17,9 @@
     pre { white-space: pre-wrap; word-wrap: break-word; background: #f6f6f6; padding: 12px; border-radius: 8px; }
     .pillbar { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
     .pill { font-size: 14px; padding: 8px 10px; border: 1px solid #ccc; border-radius: 999px; background: #fff; width: auto; }
+    .inlinebtn { font-size: 14px; padding: 10px 12px; width: auto; }
+    .rowline { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
+    .rowline > div { flex: 1 1 320px; }
   </style>
 </head>
 <body>
@@ -24,7 +27,7 @@
     <h2>PM Note Tool (v1)</h2>
 
     <label>Location</label>
-    <input id="location" placeholder="Take 5 – Racine" />
+    <input id="location" placeholder="Take five – Brookfield – 52nd St." />
 
     <div class="row">
       <div>
@@ -50,16 +53,24 @@
     </div>
 
     <label>Parts used (filters / belts / etc.)</label>
-    <input id="used" placeholder="Example: one 16 by 25 by one and two 20 by 25 by twos" />
+    <input id="used" placeholder="Example: two 20 by 25 by twos and one 16 by 25 by one" />
 
     <label>Cost of parts (if known)</label>
     <input id="partscost" placeholder="Example: $23 (or leave blank)" />
 
-    <label>Parts needed for next PM</label>
-    <input id="next" placeholder="Example: one 16 by 25 by one and two 20 by 25 by twos" />
+    <div class="rowline">
+      <div>
+        <label>Parts needed for next PM</label>
+        <input id="next" placeholder="Example: two 20 by 25 by twos and one 16 by 25 by one" />
+      </div>
+      <div>
+        <button id="same" class="inlinebtn" type="button">Same</button>
+        <div class="small">Copies Parts used → Parts needed</div>
+      </div>
+    </div>
 
     <label>Notes / Repairs</label>
-    <textarea id="notesrepairs" placeholder="Example: RH2 failed. Replace RH2. Ladder needed for UH1 service."></textarea>
+    <textarea id="notesrepairs" placeholder="Leave blank if everything is running good."></textarea>
 
     <button id="generate">Generate PM Report</button>
     <button id="copy">Copy Report</button>
@@ -112,6 +123,7 @@
       return t;
     }
 
+    // ---------- EQUIPMENT ----------
     function normalizeSpeechEquipment(text) {
       if (!text) return "";
       let t = text.replace(/\n+/g, " ").toLowerCase();
@@ -175,31 +187,55 @@
       return expanded.join("\n");
     }
 
+    // ---------- PARTS (filters/belts/etc.) ----------
+    // Output goal: "2 – 20x25x2, 1 – 16x25x1"
     function normalizePartsInput(text) {
       if (!text) return "";
       let t = text.toLowerCase();
 
+      // Convert "and" to commas
       t = t.replace(/\s+and\s+/g, ", ");
+
+      // Numbers words -> digits
       t = replaceWordNumbers(t);
+
+      // Normalize "by" to x
       t = t.replace(/\s+by\s+/g, " x ");
 
+      // Convert "x twos" etc if it slipped through as a word
+      t = t.replace(/\bx\s*(one|two|three|four|five|six|seven|eight|nine|ten)\b/g, (m, w) => "x " + (WORD_TO_NUM[w] || w));
+
+      // Fix common dictation: "16 25 x 1" -> "16x25x1"
       t = t.replace(/\b(\d+)\s+(\d+)\s*x\s*(\d+)\b/g, "$1x$2x$3");
+
+      // Tighten: "16 x 25 x 1" -> "16x25x1"
       t = t.replace(/(\d+)\s*x\s*(\d+)\s*x\s*(\d+)/g, "$1x$2x$3");
 
-      const rawItems = t.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+      // Split items
+      const items = t.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
 
       const cleaned = [];
-      for (const item of rawItems) {
-        let it = item.replace(/\b(filters?|filter|pleated)\b/g, "").trim();
-        it = it.replace(/\b(\d+)\s*[-–]\s*(\d+x\d+x\d+)\b/g, "$1 – $2");
-        it = it.replace(/\b(\d+)\s+(\d+x\d+x\d+)\b/g, "$1 – $2");
-        cleaned.push(it);
+      for (let item of items) {
+        // Remove filler words that mess with parsing
+        item = item.replace(/\b(filters?|filter|pleated)\b/g, "").trim();
+        item = item.replace(/\s{2,}/g, " ").trim();
+
+        // Convert "N – SIZE" variations to our exact format
+        item = item.replace(/\b(\d+)\s*[-–]\s*(\d+x\d+x\d+)\b/g, "$1 – $2");
+
+        // Convert "N SIZE" -> "N – SIZE"
+        item = item.replace(/\b(\d+)\s+(\d+x\d+x\d+)\b/g, "$1 – $2");
+
+        // If dictation produced "1x16x25x1" (count glued to size), fix it:
+        item = item.replace(/\b(\d+)x(\d+x\d+x\d+)\b/g, "$1 – $2");
+
+        cleaned.push(item);
       }
 
-      const out = cleaned.map(s => s.trim()).filter(Boolean).join(", ");
-      return out || "";
+      return cleaned.filter(Boolean).join(", ");
     }
 
+    // ---------- Draft ----------
     function loadDraft() {
       const raw = localStorage.getItem("pm_note_tool_draft_v1");
       if (!raw) return;
@@ -249,9 +285,11 @@
       const partscostRaw = $("partscost").value.trim();
       const partscost = partscostRaw ? partscostRaw : "Unknown";
 
-      const notesrepairs = $("notesrepairs").value.trim() || "None";
+      // DEFAULT NOTE if blank
+      const notesrepairsRaw = $("notesrepairs").value.trim();
+      const notesrepairs = notesrepairsRaw ? notesrepairsRaw : "All units are running good at this time.";
 
-      let report =
+      const report =
 `PM
 
 Location:
@@ -316,6 +354,13 @@ Nameplate photos attached.
       saveDraft();
     }
 
+    // Same button: copy used -> next (raw)
+    function sameParts() {
+      $("next").value = $("used").value;
+      $("next").dispatchEvent(new Event("input"));
+      saveDraft();
+    }
+
     function nextNumberFor(prefix, currentText) {
       const re = new RegExp(`\\b${prefix}\\s*-?\\s*(\\d+)\\b`, "gi");
       let max = 0;
@@ -346,6 +391,7 @@ Nameplate photos attached.
     $("generate").addEventListener("click", generateReport);
     $("copy").addEventListener("click", copyReport);
     $("clear").addEventListener("click", clearForm);
+    $("same").addEventListener("click", sameParts);
 
     document.querySelectorAll("button.pill[data-add]").forEach(btn => {
       btn.addEventListener("click", () => addEquip(btn.getAttribute("data-add")));

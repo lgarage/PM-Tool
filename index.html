@@ -23,12 +23,12 @@
   <div class="card">
     <h2>PM Note Tool (v1)</h2>
     <div class="small">
-      Tip: use iPhone dictation. Equipment auto-normalizes speech like “unit heater one” → UH1.
-      Parts fields auto-fix “and” → commas, tighten sizes “14 x 20 x 2” → “14x20x2”, and format counts as “1 – 14x20x2”.
+      Equipment: speak “RTU one, furnace one, radiant heater one and radiant heater two” → RTU1/F1/RH1/RH2.
+      Parts: speak “one 16 by 25 by one and two 20 by 25 by twos” → 1 – 16x25x1, 2 – 20x25x2.
     </div>
 
     <label>Location</label>
-    <input id="location" placeholder="Take 5 – Kenosha – 52nd St." />
+    <input id="location" placeholder="Take 5 – Racine" />
 
     <div class="row">
       <div>
@@ -42,7 +42,6 @@
     </div>
 
     <label>Equipment on Site</label>
-    <div class="small">Speak naturally: “RTU one, furnace one, exhaust fan one, make up air one…”</div>
     <textarea id="equipment" placeholder="Example: RTU1, F1, RH1, RH2, MUA1, EF1, UH1"></textarea>
 
     <div class="pillbar">
@@ -55,19 +54,19 @@
     </div>
 
     <label>Parts used (filters / belts / etc.)</label>
-    <input id="used" placeholder="Example: 1 – 14x20x1, 1 – BX35 belt" />
+    <input id="used" placeholder="Example: one 16 by 25 by one and two 20 by 25 by twos" />
 
     <label>Cost of parts (if known)</label>
     <input id="partscost" placeholder="Example: $23 (or leave blank)" />
 
     <label>Parts needed for next PM</label>
-    <input id="next" placeholder="Example: one 14 x 20 x 2 and one 16 x 25 x 2 and four 16 x 16 x 2 filters" />
+    <input id="next" placeholder="Example: one 16 by 25 by one and two 20 by 25 by twos" />
 
     <label>Notes</label>
-    <textarea id="notes" placeholder="Example: All seems to be working properly."></textarea>
+    <textarea id="notes" placeholder="Example: RH2 failed. Needs replacement."></textarea>
 
     <label>Recommended repairs (equipment-specific)</label>
-    <textarea id="repairs" placeholder="Example: RTU1 needs BX35 belt, induced draft motor, condenser fan motor/blade/capacitor."></textarea>
+    <textarea id="repairs" placeholder="Example: Replace RH2."></textarea>
 
     <button id="generate">Generate PM Report</button>
     <button id="copy">Copy Report</button>
@@ -105,62 +104,31 @@
       ["HWP", "Hot Water Pump"],
     ]);
 
-    const NUMBER_MAP = {
-      "one": "1", "two": "2", "three": "3", "four": "4", "five": "5",
-      "six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10"
+    const WORD_TO_NUM = {
+      "one": "1","two": "2","three": "3","four": "4","five": "5",
+      "six": "6","seven": "7","eight": "8","nine": "9","ten": "10",
+      "twos": "2","threes": "3","fours": "4","fives": "5"
     };
 
-    // --- Parts normalization + formatting ---
-    // Goal output: "1 – 14x20x2, 1 – 16x25x2, 4 – 16x16x2"
-    function normalizePartsInput(text) {
-      if (!text) return "";
-
-      let t = text.toLowerCase();
-
-      // Convert number words to digits
-      for (const [word, digit] of Object.entries(NUMBER_MAP)) {
-        const re = new RegExp(`\\b${word}\\b`, "g");
-        t = t.replace(re, digit);
+    function replaceWordNumbers(s) {
+      let t = s;
+      for (const [w, n] of Object.entries(WORD_TO_NUM)) {
+        const re = new RegExp(`\\b${w}\\b`, "gi");
+        t = t.replace(re, n);
       }
-
-      // Replace " and " with comma
-      t = t.replace(/\s+and\s+/g, ", ");
-
-      // Convert "by" to x for sizes
-      t = t.replace(/\s+by\s+/g, " x ");
-
-      // Tighten sizes: "14 x 20 x 2" -> "14x20x2"
-      t = t.replace(/(\d+)\s*x\s*(\d+)\s*x\s*(\d+)/g, "$1x$2x$3");
-
-      // Remove common filler words that appear after dictation
-      // (we keep belt numbers like BX35 intact)
-      t = t.replace(/\b(filters?|pleated|air|filter)\b/g, "").trim();
-
-      // Normalize separators
-      t = t.replace(/\s*,\s*/g, ", ");
-      t = t.replace(/\s{2,}/g, " ").trim();
-
-      // Now enforce "N – SIZE" where we see "N SIZE"
-      // Handles: "1 14x20x2" -> "1 – 14x20x2"
-      t = t.replace(/\b(\d+)\s+(\d+x\d+x\d+)\b/g, "$1 – $2");
-
-      // Also handle if they already said "1 - 14x20x2" (convert hyphen to en dash)
-      t = t.replace(/\b(\d+)\s*[-–]\s*(\d+x\d+x\d+)\b/g, "$1 – $2");
-
-      // Clean up double commas/spaces created by word removals
-      t = t.replace(/,\s*,/g, ", ");
-      t = t.replace(/\s{2,}/g, " ").trim();
-      t = t.replace(/^,\s*/g, "");
-      t = t.replace(/\s*,\s*$/g, "");
-
-      return t || "";
+      return t;
     }
 
-    // --- Equipment normalization ---
+    // -------- EQUIPMENT NORMALIZER (fixes stray "and") --------
     function normalizeSpeechEquipment(text) {
       if (!text) return "";
-      let result = text.replace(/\n+/g, " ").toLowerCase();
 
+      let t = text.replace(/\n+/g, " ").toLowerCase();
+
+      // Remove filler "and" so it never becomes a token
+      t = t.replace(/\s+and\s+/g, " ");
+
+      // Phrase -> code
       const phraseMap = [
         ["rooftop unit", "rtu"],
         ["roof top unit", "rtu"],
@@ -170,28 +138,22 @@
         ["make-up air", "mua"],
         ["exhaust fan", "ef"],
         ["furnace", "f"],
-        ["rtu", "rtu"],
-        ["uh", "uh"],
-        ["rh", "rh"],
-        ["mua", "mua"],
-        ["ef", "ef"],
-        ["f", "f"],
       ];
 
       for (const [phrase, code] of phraseMap) {
         const safe = phrase.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
         const re = new RegExp(`\\b${safe}\\b`, "g");
-        result = result.replace(re, code);
+        t = t.replace(re, code);
       }
 
-      for (const [word, digit] of Object.entries(NUMBER_MAP)) {
-        const re = new RegExp(`\\b${word}\\b`, "g");
-        result = result.replace(re, digit);
-      }
+      t = replaceWordNumbers(t);
 
-      result = result.replace(/\b(rtu|uh|rh|mua|ef|f)\s*(\d+)\b/g, (_, p1, p2) => `${p1.toUpperCase()}${p2}`);
-      result = result.replace(/\s{2,}/g, " ").trim();
-      return result;
+      // Join code + number: "rh 2" -> "RH2"
+      t = t.replace(/\b(rtu|uh|rh|mua|ef|f)\s*(\d+)\b/g, (_, p1, p2) => `${p1.toUpperCase()}${p2}`);
+
+      // Normalize separators
+      t = t.replace(/\s{2,}/g, " ").trim();
+      return t;
     }
 
     function expandEquipmentToken(token) {
@@ -205,7 +167,6 @@
       const prefix = m[1].toUpperCase();
       const num = m[2];
       const label = EQUIP_MAP.get(prefix);
-
       if (!label) return `${prefix}${num}`;
       return `${prefix}${num} (${label})`;
     }
@@ -230,6 +191,57 @@
       return expanded.join("\n");
     }
 
+    // -------- PARTS NORMALIZER (forces "N – AxBxC") --------
+    function normalizePartsInput(text) {
+      if (!text) return "";
+
+      let t = text.toLowerCase();
+
+      // Convert "and" to commas for consistent splitting
+      t = t.replace(/\s+and\s+/g, ", ");
+
+      // Convert word numbers to digits (one -> 1, twos -> 2)
+      t = replaceWordNumbers(t);
+
+      // Convert "by" to x
+      t = t.replace(/\s+by\s+/g, " x ");
+
+      // Handle pattern: "20 25 x 2" (missing x between first two nums) -> "20x25x2"
+      // Common dictation: "two 20 25 by twos"
+      t = t.replace(/\b(\d+)\s+(\d+)\s*x\s*(\d+)\b/g, "$1x$2x$3");
+
+      // Tighten standard: "14 x 20 x 2" -> "14x20x2"
+      t = t.replace(/(\d+)\s*x\s*(\d+)\s*x\s*(\d+)/g, "$1x$2x$3");
+
+      // Split into items (commas / semicolons)
+      const rawItems = t.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+
+      // For each item, extract a count and a size if possible.
+      // Accept forms like:
+      // "1 16x25x1"
+      // "2 20x25x2 filters"
+      // "1 – 16x25x1"
+      const cleaned = [];
+      for (const item of rawItems) {
+        // Remove common filler words
+        let it = item.replace(/\b(filters?|filter|pleated)\b/g, "").trim();
+
+        // If it already has dash, normalize to en dash
+        it = it.replace(/\b(\d+)\s*[-–]\s*(\d+x\d+x\d+)\b/g, "$1 – $2");
+
+        // If it's "N SIZE", convert to "N – SIZE"
+        it = it.replace(/\b(\d+)\s+(\d+x\d+x\d+)\b/g, "$1 – $2");
+
+        // If someone just said "16x25x1" with no count, leave it as-is
+        cleaned.push(it);
+      }
+
+      // Final cleanup: remove empties and normalize comma spacing
+      const out = cleaned.map(s => s.trim()).filter(Boolean).join(", ");
+      return out || "";
+    }
+
+    // -------- Draft save/load --------
     function loadDraft() {
       const raw = localStorage.getItem("pm_note_tool_draft_v1");
       if (!raw) return;

@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Take 5 PM Capture (v1)</title>
+  <style>
+    body { font-family: -apple-system, system-ui, Segoe UI, Roboto, Arial, sans-serif; margin: 16px; }
+    .card { max-width: 720px; margin: 0 auto; }
+    label { display: block; font-weight: 600; margin-top: 14px; }
+    input, textarea { width: 100%; font-size: 16px; padding: 10px; margin-top: 6px; box-sizing: border-box; }
+    textarea { min-height: 90px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .row > div { flex: 1 1 220px; }
+    button { font-size: 16px; padding: 12px 14px; margin-top: 14px; width: 100%; }
+    .small { font-size: 13px; opacity: 0.8; margin-top: 6px; }
+    pre { white-space: pre-wrap; word-wrap: break-word; background: #f6f6f6; padding: 12px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>PM – Take 5 (v1)</h2>
+    <div class="small">Tip: tap any field and use your iPhone keyboard mic for speech-to-text.</div>
+
+    <label>Location</label>
+    <input id="location" placeholder="Take 5 – Brown Deer Rd – Milwaukee" />
+
+    <div class="row">
+      <div>
+        <label>Date</label>
+        <input id="date" />
+      </div>
+      <div>
+        <label>Work done (default)</label>
+        <input id="workdone" />
+      </div>
+    </div>
+
+    <label>Filters / belts used</label>
+    <input id="used" placeholder='Example: 1 – 16x25x1 pleated filter' />
+
+    <label>Filters / belts for next PM</label>
+    <input id="next" placeholder='Example: 1 – 16x25x1 pleated filter' />
+
+    <label>Notes</label>
+    <textarea id="notes" placeholder="Example: All equipment operating normally at time of inspection."></textarea>
+
+    <label>Recommended repairs (equipment-specific)</label>
+    <textarea id="repairs" placeholder="Example: RTU-1 needs BX35 belt, induced draft motor, condenser fan motor/blade/capacitor."></textarea>
+
+    <button id="generate">Generate PM Report</button>
+    <button id="copy">Copy Report</button>
+    <button id="clear">Clear Form</button>
+
+    <label>Output</label>
+    <pre id="output">(Report will appear here)</pre>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    function pad2(n) { return String(n).padStart(2, "0"); }
+    function defaultDate() {
+      const d = new Date();
+      return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+    }
+
+    function loadDraft() {
+      const raw = localStorage.getItem("take5_pm_draft_v1");
+      if (!raw) return;
+      try {
+        const d = JSON.parse(raw);
+        $("location").value = d.location || "";
+        $("date").value = d.date || defaultDate();
+        $("workdone").value = d.workdone || $("workdone").value;
+        $("used").value = d.used || "";
+        $("next").value = d.next || "";
+        $("notes").value = d.notes || "";
+        $("repairs").value = d.repairs || "";
+        $("output").textContent = d.output || $("output").textContent;
+      } catch {}
+    }
+
+    function saveDraft() {
+      const payload = {
+        location: $("location").value.trim(),
+        date: $("date").value.trim(),
+        workdone: $("workdone").value.trim(),
+        used: $("used").value.trim(),
+        next: $("next").value.trim(),
+        notes: $("notes").value.trim(),
+        repairs: $("repairs").value.trim(),
+        output: $("output").textContent
+      };
+      localStorage.setItem("take5_pm_draft_v1", JSON.stringify(payload));
+    }
+
+    function generateReport() {
+      const location = $("location").value.trim() || "[Location]";
+      const date = $("date").value.trim() || defaultDate();
+      const workdone = $("workdone").value.trim() || "Changed filters/belts and verified operations of equipment";
+      const used = $("used").value.trim() || "None";
+      const next = $("next").value.trim() || "None";
+      const notes = $("notes").value.trim() || "None";
+      const repairs = $("repairs").value.trim();
+
+      let report =
+`PM – Take 5
+
+Location:
+${location}
+
+Date:
+${date}
+
+Note:
+${notes}
+
+Work done:
+${workdone}
+
+Filters/belts used:
+${used}
+
+Filters/belts for next PM:
+${next}
+`;
+
+      if (repairs) {
+        report += `\nRecommended repairs:\n${repairs}\n`;
+      } else {
+        report += `\nRecommended repairs:\nNone\n`;
+      }
+
+      report += `\nPictures:\nNameplate photos attached.\n`;
+      $("output").textContent = report;
+      saveDraft();
+    }
+
+    async function copyReport() {
+      const text = $("output").textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+        alert("Copied.");
+      } catch {
+        // Fallback for older iOS behavior
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        alert("Copied.");
+      }
+    }
+
+    function clearForm() {
+      if (!confirm("Clear this form?")) return;
+      $("location").value = "";
+      $("date").value = defaultDate();
+      $("used").value = "";
+      $("next").value = "";
+      $("notes").value = "";
+      $("repairs").value = "";
+      $("output").textContent = "(Report will appear here)";
+      saveDraft();
+    }
+
+    // Init defaults
+    $("date").value = defaultDate();
+    $("workdone").value = "Changed filters/belts and verified operations of equipment";
+
+    // Auto-save on input
+    ["location","date","workdone","used","next","notes","repairs"].forEach(id => {
+      $(id).addEventListener("input", saveDraft);
+    });
+
+    $("generate").addEventListener("click", generateReport);
+    $("copy").addEventListener("click", copyReport);
+    $("clear").addEventListener("click", clearForm);
+
+    loadDraft();
+  </script>
+</body>
+</html>

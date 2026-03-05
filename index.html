@@ -6,64 +6,24 @@
 <title>PM Tool</title>
 
 <style>
-body{
-font-family:-apple-system,system-ui,Arial;
-margin:20px;
-}
-
-.card{
-max-width:750px;
-margin:auto;
-}
-
-label{
-font-weight:600;
-display:block;
-margin-top:14px;
-}
-
-input,textarea{
-width:100%;
-padding:10px;
-font-size:16px;
-margin-top:6px;
-box-sizing:border-box;
-}
-
-textarea{
-min-height:90px;
-}
-
-button{
-padding:12px;
-margin-top:14px;
-font-size:16px;
-width:100%;
-}
-
-.inline{
-display:flex;
-gap:10px;
-}
-
-.inline button{
-width:auto;
-}
-
-pre{
-background:#f5f5f5;
-padding:14px;
-white-space:pre-wrap;
-border-radius:8px;
-}
+body{font-family:-apple-system,system-ui,Arial;margin:20px;}
+.card{max-width:750px;margin:auto;}
+label{font-weight:600;display:block;margin-top:14px;}
+input,textarea{width:100%;padding:10px;font-size:16px;margin-top:6px;box-sizing:border-box;}
+textarea{min-height:90px;}
+button{padding:12px;margin-top:14px;font-size:16px;width:100%;}
+.inline{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+.inline button{width:auto;}
+pre{background:#f5f5f5;padding:14px;white-space:pre-wrap;border-radius:8px;}
+.small{font-size:13px;opacity:.75;margin-top:6px;}
 </style>
 </head>
 
 <body>
-
 <div class="card">
 
 <h2>PM Tool</h2>
+<div class="small" id="draftStatus"></div>
 
 <label>Location</label>
 <input id="location">
@@ -84,17 +44,17 @@ border-radius:8px;
 <input id="cost">
 
 <label>Parts needed next PM</label>
-
 <div class="inline">
-<input id="next">
-<button id="same">Same</button>
+  <input id="next">
+  <button id="same" type="button">Same</button>
 </div>
 
 <label>Work done</label>
 <input id="workdone">
 
-<button id="generate">Generate PM Report</button>
-<button id="copy">Copy Report</button>
+<button id="generate" type="button">Generate PM Report</button>
+<button id="copy" type="button">Copy Report</button>
+<button id="clear" type="button">Clear All</button>
 
 <label>Output</label>
 <pre id="output"></pre>
@@ -102,211 +62,249 @@ border-radius:8px;
 </div>
 
 <script>
-
+/* ---------- helpers ---------- */
+function pad2(n){return String(n).padStart(2,"0")}
 function today(){
-const d=new Date()
-return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")
+  const d=new Date()
+  return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate())
 }
 
-document.getElementById("date").value=today()
-
-document.getElementById("workdone").value="Changed filters/belts and verified operations of equipment"
-
+/* ---------- defaults ---------- */
+const DEFAULT_WORKDONE="Changed filters/belts and verified operations of equipment";
+const DEFAULT_NOTES="All units are running good at this time.";
+const DRAFT_KEY="pm_tool_draft_v2";
 
 /* ---------- number conversion ---------- */
-
 const numMap={
-one:"1",two:"2",three:"3",four:"4",five:"5",
-six:"6",seven:"7",eight:"8",nine:"9",ten:"10",
-ones:"1",twos:"2",threes:"3"
-}
+  one:"1",two:"2",three:"3",four:"4",five:"5",
+  six:"6",seven:"7",eight:"8",nine:"9",ten:"10",
+  ones:"1",twos:"2",threes:"3",fours:"4",fives:"5",
+  // iPhone dictation screwups: "to/too" instead of "two" (we only use it in parts/equipment contexts)
+  to:"2",too:"2"
+};
 
 function convertNumbers(text){
-
-let t=text
-
-for(let k in numMap){
-let r=new RegExp("\\b"+k+"\\b","gi")
-t=t.replace(r,numMap[k])
+  let t=text;
+  for(let k in numMap){
+    const r=new RegExp("\\b"+k+"\\b","gi");
+    t=t.replace(r,numMap[k]);
+  }
+  return t;
 }
 
-return t
-}
-
-
-/* ---------- equipment parsing ---------- */
-
+/* ---------- equipment parsing (counts -> codes) ---------- */
 function expandEquipmentCounts(text){
+  let t=(text||"").toLowerCase().replace(/\n/g," ");
+  t=t.replace(/\s+and\s+/g,",");
+  t=t.replace(/\s{2,}/g," ").trim();
 
-let t=text.toLowerCase()
+  // Handle RT dictation variants BEFORE mapping
+  t=t.replace(/\brt\s*you\b/g,"rtu");
+  t=t.replace(/\brt\s*u\b/g,"rtu");
+  t=t.replace(/\brt\b/g,"rtu");
 
-t=t.replace(/\n/g," ")
+  t=convertNumbers(t);
 
-t=t.replace(/\s+and\s+/g,",")
+  const map=[
+    ["rooftop units","rtu"],
+    ["rooftop unit","rtu"],
+    ["rtus","rtu"],
+    ["rtu","rtu"],
+    ["furnaces","f"],
+    ["furnace","f"],
+    ["radiant heaters","rh"],
+    ["radiant heater","rh"],
+    ["unit heaters","uh"],
+    ["unit heater","uh"],
+    ["exhaust fans","ef"],
+    ["exhaust fan","ef"],
+    ["make up air","mua"],
+    ["make-up air","mua"]
+  ];
 
-t=convertNumbers(t)
+  for(const m of map){
+    const r=new RegExp("\\b"+m[0].replace(/[-/\\^$*+?.()|[\]{}]/g,"\\$&")+"\\b","g");
+    t=t.replace(r,m[1]);
+  }
 
-t=t.replace(/\brt\b/g,"rtu")
+  const parts=t.split(",").map(s=>s.trim()).filter(Boolean);
+  const out=[];
 
-t=t.replace(/rt\s*you/g,"rtu")
-t=t.replace(/rt\s*u/g,"rtu")
+  for(const p of parts){
+    // Match: "2 rtu" / "1 f" / "2 rh" etc.
+    const m=p.match(/\b(\d+)\s*(rtu|rh|uh|f|ef|mua)\b/);
+    if(m){
+      const count=parseInt(m[1],10);
+      const code=m[2].toUpperCase();
+      if(!Number.isNaN(count) && count>0 && count<50){
+        for(let i=1;i<=count;i++) out.push(code+i);
+        continue;
+      }
+    }
 
-const map=[
-["rooftop units","rtu"],
-["rooftop unit","rtu"],
-["furnaces","f"],
-["furnace","f"],
-["radiant heaters","rh"],
-["radiant heater","rh"],
-["unit heaters","uh"],
-["unit heater","uh"],
-["exhaust fans","ef"],
-["exhaust fan","ef"],
-["make up air","mua"]
-]
+    // If they typed codes directly like "RH1"
+    const direct=p.toUpperCase().match(/\b(rtu|rh|uh|f|ef|mua)\s*(\d+)\b/i);
+    if(direct){
+      out.push(direct[1].toUpperCase()+direct[2]);
+    }
+  }
 
-for(const m of map){
-let r=new RegExp(m[0],"g")
-t=t.replace(r,m[1])
+  return out.join(",");
 }
 
-let parts=t.split(",")
-
-let out=[]
-
-for(let p of parts){
-
-p=p.trim()
-
-let m=p.match(/(\d+)\s*(rtu|rh|uh|f|ef|mua)/)
-
-if(m){
-
-let count=parseInt(m[1])
-let code=m[2].toUpperCase()
-
-for(let i=1;i<=count;i++){
-out.push(code+i)
-}
-
-}
-}
-
-return out.join(",")
-}
-
-
-/* ---------- expand equipment labels ---------- */
-
+/* ---------- equipment labels ---------- */
 const equipLabels={
-RTU:"Rooftop Unit",
-RH:"Radiant Heater",
-UH:"Unit Heater",
-F:"Furnace",
-EF:"Exhaust Fan",
-MUA:"Make-Up Air Unit"
+  RTU:"Rooftop Unit",
+  RH:"Radiant Heater",
+  UH:"Unit Heater",
+  F:"Furnace",
+  EF:"Exhaust Fan",
+  MUA:"Make-Up Air Unit"
+};
+
+function expandEquipment(codeCsv){
+  const list=(codeCsv||"").split(",").map(s=>s.trim()).filter(Boolean);
+  const out=[];
+  for(const e of list){
+    const m=e.match(/^([A-Z]+)(\d+)$/);
+    if(!m) continue;
+    const code=m[1], num=m[2];
+    const label=equipLabels[code]||code;
+    out.push(code+num+" ("+label+")");
+  }
+  return out.length ? out.join("\n") : "Not listed";
 }
 
-function expandEquipment(text){
-
-let list=text.split(",")
-
-let out=[]
-
-for(let e of list){
-
-let m=e.match(/([A-Z]+)(\d+)/)
-
-if(!m)continue
-
-let code=m[1]
-let num=m[2]
-
-let label=equipLabels[code]||code
-
-out.push(code+num+" ("+label+")")
-}
-
-return out.join("\n")
-}
-
-
-/* ---------- parts parsing ---------- */
-
+/* ---------- parts parsing (voice -> "N – AxBxC") ---------- */
 function normalizeParts(text){
+  let t=(text||"").toLowerCase().trim();
+  if(!t) return "";
 
-let t=text.toLowerCase()
+  t=t.replace(/\s+and\s+/g,",");
+  t=t.replace(/\s{2,}/g," ").trim();
 
-t=t.replace(/\s+and\s+/g,",")
+  // Convert number words
+  t=convertNumbers(t);
 
-t=convertNumbers(t)
+  // Normalize "by" to x
+  t=t.replace(/\s+by\s+/g," x ");
 
-t=t.replace(/by/g,"x")
+  // Fix: "20 25 x 2" -> "20x25x2"
+  t=t.replace(/\b(\d+)\s+(\d+)\s*x\s*(\d+)\b/g,"$1x$2x$3");
 
-t=t.replace(/(\d+)\s+(\d+)\s*x\s*(\d+)/g,"$1x$2x$3")
+  // Tighten: "16 x 25 x 1" -> "16x25x1"
+  t=t.replace(/(\d+)\s*x\s*(\d+)\s*x\s*(\d+)/g,"$1x$2x$3");
 
-t=t.replace(/(\d+)\s*x\s*(\d+)\s*x\s*(\d+)/g,"$1x$2x$3")
+  const items=t.split(/[,;]+/).map(s=>s.trim()).filter(Boolean);
+  const out=[];
 
-let items=t.split(",")
+  for(let item of items){
+    // Remove filler words
+    item=item.replace(/\b(filters?|filter|pleated)\b/g,"").trim();
+    item=item.replace(/\s{2,}/g," ").trim();
 
-let out=[]
+    // Handle glued count: "1x16x25x1" -> "1 – 16x25x1"
+    item=item.replace(/\b(\d+)x(\d+x\d+x\d+)\b/g,"$1 – $2");
 
-for(let i of items){
+    // Standard: "1 16x25x1" -> "1 – 16x25x1"
+    item=item.replace(/\b(\d+)\s+(\d+x\d+x\d+)\b/g,"$1 – $2");
 
-i=i.trim()
+    // Already dashed
+    item=item.replace(/\b(\d+)\s*[-–]\s*(\d+x\d+x\d+)\b/g,"$1 – $2");
 
-let m=i.match(/(\d+)\s*(\d+x\d+x\d+)/)
+    // If it still contains a size but no count, keep it raw
+    if(/\d+x\d+x\d+/.test(item) && !/^\d+\s*–/.test(item)){
+      out.push(item);
+    } else if(item){
+      out.push(item);
+    }
+  }
 
-if(m){
-
-out.push(m[1]+" – "+m[2])
-
+  return out.join(", ");
 }
 
+/* ---------- draft save/restore ---------- */
+function getFields(){
+  return {
+    location: document.getElementById("location").value || "",
+    date: document.getElementById("date").value || "",
+    equipment: document.getElementById("equipment").value || "",
+    notes: document.getElementById("notes").value || "",
+    used: document.getElementById("used").value || "",
+    cost: document.getElementById("cost").value || "",
+    next: document.getElementById("next").value || "",
+    workdone: document.getElementById("workdone").value || "",
+    output: document.getElementById("output").textContent || "",
+    savedAt: new Date().toISOString()
+  };
 }
 
-return out.join(", ")
+function setFields(d){
+  document.getElementById("location").value = d.location || "";
+  document.getElementById("date").value = d.date || today();
+  document.getElementById("equipment").value = d.equipment || "";
+  document.getElementById("notes").value = d.notes || "";
+  document.getElementById("used").value = d.used || "";
+  document.getElementById("cost").value = d.cost || "";
+  document.getElementById("next").value = d.next || "";
+  document.getElementById("workdone").value = d.workdone || DEFAULT_WORKDONE;
+  document.getElementById("output").textContent = d.output || "";
 }
 
+function saveDraft(){
+  try{
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(getFields()));
+    const status=document.getElementById("draftStatus");
+    status.textContent="Draft saved.";
+  }catch(e){}
+}
 
-/* ---------- same button ---------- */
+function loadDraft(){
+  const raw=localStorage.getItem(DRAFT_KEY);
+  if(!raw) return false;
+  try{
+    const d=JSON.parse(raw);
+    setFields(d);
+    const status=document.getElementById("draftStatus");
+    if(d.savedAt){
+      const dt=new Date(d.savedAt);
+      status.textContent="Restored draft from " + dt.toLocaleString();
+    } else {
+      status.textContent="Restored draft.";
+    }
+    return true;
+  }catch(e){
+    return false;
+  }
+}
 
+/* ---------- UI actions ---------- */
 document.getElementById("same").onclick=function(){
-
-document.getElementById("next").value=document.getElementById("used").value
-
-}
-
-
-/* ---------- generate report ---------- */
+  document.getElementById("next").value=document.getElementById("used").value;
+  saveDraft();
+};
 
 document.getElementById("generate").onclick=function(){
+  const location=document.getElementById("location").value || "[Location]";
+  const date=document.getElementById("date").value || today();
 
-let location=document.getElementById("location").value||"[Location]"
+  const equipRaw=document.getElementById("equipment").value || "";
+  const equipCodes=expandEquipmentCounts(equipRaw);
+  const equip=expandEquipment(equipCodes);
 
-let date=document.getElementById("date").value
+  let notes=(document.getElementById("notes").value || "").trim();
+  if(!notes) notes=DEFAULT_NOTES;
 
-let equipRaw=document.getElementById("equipment").value
+  const usedRaw=document.getElementById("used").value || "";
+  const used=usedRaw ? (normalizeParts(usedRaw) || usedRaw) : "None";
 
-let equipCodes=expandEquipmentCounts(equipRaw)
+  const nextRaw=document.getElementById("next").value || "";
+  const next=nextRaw ? (normalizeParts(nextRaw) || nextRaw) : "None";
 
-let equip=expandEquipment(equipCodes)
+  const cost=document.getElementById("cost").value || "Unknown";
+  const workdone=document.getElementById("workdone").value || DEFAULT_WORKDONE;
 
-let notes=document.getElementById("notes").value.trim()
-
-if(!notes)notes="All units are running good at this time."
-
-let usedRaw=document.getElementById("used").value
-let used=usedRaw?normalizeParts(usedRaw):"None"
-
-let nextRaw=document.getElementById("next").value
-let next=nextRaw?normalizeParts(nextRaw):"None"
-
-let cost=document.getElementById("cost").value||"Unknown"
-
-let workdone=document.getElementById("workdone").value
-
-let report=`PM
+  const report=`PM
 
 Location:
 ${location}
@@ -334,22 +332,63 @@ ${next}
 
 Pictures:
 Nameplate photos attached.
-`
+`;
 
-document.getElementById("output").textContent=report
-
-}
-
-
-/* ---------- copy ---------- */
+  document.getElementById("output").textContent=report;
+  saveDraft();
+};
 
 document.getElementById("copy").onclick=function(){
+  const text=document.getElementById("output").textContent || "";
+  if(!text.trim()) return;
+  navigator.clipboard.writeText(text);
+};
 
-navigator.clipboard.writeText(document.getElementById("output").textContent)
+document.getElementById("clear").onclick=function(){
+  if(!confirm("Clear everything (including saved draft)?")) return;
+  localStorage.removeItem(DRAFT_KEY);
 
+  document.getElementById("location").value="";
+  document.getElementById("date").value=today();
+  document.getElementById("equipment").value="";
+  document.getElementById("notes").value="";
+  document.getElementById("used").value="";
+  document.getElementById("cost").value="";
+  document.getElementById("next").value="";
+  document.getElementById("workdone").value=DEFAULT_WORKDONE;
+  document.getElementById("output").textContent="";
+  document.getElementById("draftStatus").textContent="Cleared.";
+};
+
+/* ---------- autosave wiring ---------- */
+function wireAutosave(){
+  const ids=["location","date","equipment","notes","used","cost","next","workdone"];
+  ids.forEach(id=>{
+    document.getElementById(id).addEventListener("input", saveDraft);
+  });
+
+  // Extra safety: save when tab is backgrounded / screen locks
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.visibilityState==="hidden") saveDraft();
+  });
+
+  window.addEventListener("pagehide", saveDraft);
 }
 
-</script>
+/* ---------- init ---------- */
+(function init(){
+  // set defaults first
+  document.getElementById("date").value=today();
+  document.getElementById("workdone").value=DEFAULT_WORKDONE;
 
+  // restore if exists
+  const restored=loadDraft();
+  if(!restored){
+    document.getElementById("draftStatus").textContent="No saved draft yet.";
+  }
+
+  wireAutosave();
+})();
+</script>
 </body>
 </html>

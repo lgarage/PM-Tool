@@ -22,10 +22,6 @@
 <body>
   <div class="card">
     <h2>PM Note Tool (v1)</h2>
-    <div class="small">
-      Equipment: speak “RTU one, furnace one, radiant heater one and radiant heater two” → RTU1/F1/RH1/RH2.
-      Parts: speak “one 16 by 25 by one and two 20 by 25 by twos” → 1 – 16x25x1, 2 – 20x25x2.
-    </div>
 
     <label>Location</label>
     <input id="location" placeholder="Take 5 – Racine" />
@@ -62,11 +58,8 @@
     <label>Parts needed for next PM</label>
     <input id="next" placeholder="Example: one 16 by 25 by one and two 20 by 25 by twos" />
 
-    <label>Notes</label>
-    <textarea id="notes" placeholder="Example: RH2 failed. Needs replacement."></textarea>
-
-    <label>Recommended repairs (equipment-specific)</label>
-    <textarea id="repairs" placeholder="Example: Replace RH2."></textarea>
+    <label>Notes / Repairs</label>
+    <textarea id="notesrepairs" placeholder="Example: RH2 failed. Replace RH2. Ladder needed for UH1 service."></textarea>
 
     <button id="generate">Generate PM Report</button>
     <button id="copy">Copy Report</button>
@@ -119,16 +112,11 @@
       return t;
     }
 
-    // -------- EQUIPMENT NORMALIZER (fixes stray "and") --------
     function normalizeSpeechEquipment(text) {
       if (!text) return "";
-
       let t = text.replace(/\n+/g, " ").toLowerCase();
-
-      // Remove filler "and" so it never becomes a token
       t = t.replace(/\s+and\s+/g, " ");
 
-      // Phrase -> code
       const phraseMap = [
         ["rooftop unit", "rtu"],
         ["roof top unit", "rtu"],
@@ -147,11 +135,7 @@
       }
 
       t = replaceWordNumbers(t);
-
-      // Join code + number: "rh 2" -> "RH2"
       t = t.replace(/\b(rtu|uh|rh|mua|ef|f)\s*(\d+)\b/g, (_, p1, p2) => `${p1.toUpperCase()}${p2}`);
-
-      // Normalize separators
       t = t.replace(/\s{2,}/g, " ").trim();
       return t;
     }
@@ -191,57 +175,31 @@
       return expanded.join("\n");
     }
 
-    // -------- PARTS NORMALIZER (forces "N – AxBxC") --------
     function normalizePartsInput(text) {
       if (!text) return "";
-
       let t = text.toLowerCase();
 
-      // Convert "and" to commas for consistent splitting
       t = t.replace(/\s+and\s+/g, ", ");
-
-      // Convert word numbers to digits (one -> 1, twos -> 2)
       t = replaceWordNumbers(t);
-
-      // Convert "by" to x
       t = t.replace(/\s+by\s+/g, " x ");
 
-      // Handle pattern: "20 25 x 2" (missing x between first two nums) -> "20x25x2"
-      // Common dictation: "two 20 25 by twos"
       t = t.replace(/\b(\d+)\s+(\d+)\s*x\s*(\d+)\b/g, "$1x$2x$3");
-
-      // Tighten standard: "14 x 20 x 2" -> "14x20x2"
       t = t.replace(/(\d+)\s*x\s*(\d+)\s*x\s*(\d+)/g, "$1x$2x$3");
 
-      // Split into items (commas / semicolons)
       const rawItems = t.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
 
-      // For each item, extract a count and a size if possible.
-      // Accept forms like:
-      // "1 16x25x1"
-      // "2 20x25x2 filters"
-      // "1 – 16x25x1"
       const cleaned = [];
       for (const item of rawItems) {
-        // Remove common filler words
         let it = item.replace(/\b(filters?|filter|pleated)\b/g, "").trim();
-
-        // If it already has dash, normalize to en dash
         it = it.replace(/\b(\d+)\s*[-–]\s*(\d+x\d+x\d+)\b/g, "$1 – $2");
-
-        // If it's "N SIZE", convert to "N – SIZE"
         it = it.replace(/\b(\d+)\s+(\d+x\d+x\d+)\b/g, "$1 – $2");
-
-        // If someone just said "16x25x1" with no count, leave it as-is
         cleaned.push(it);
       }
 
-      // Final cleanup: remove empties and normalize comma spacing
       const out = cleaned.map(s => s.trim()).filter(Boolean).join(", ");
       return out || "";
     }
 
-    // -------- Draft save/load --------
     function loadDraft() {
       const raw = localStorage.getItem("pm_note_tool_draft_v1");
       if (!raw) return;
@@ -254,8 +212,7 @@
         $("used").value = d.used || "";
         $("partscost").value = d.partscost || "";
         $("next").value = d.next || "";
-        $("notes").value = d.notes || "";
-        $("repairs").value = d.repairs || "";
+        $("notesrepairs").value = d.notesrepairs || "";
         $("output").textContent = d.output || $("output").textContent;
       } catch {}
     }
@@ -269,8 +226,7 @@
         used: $("used").value.trim(),
         partscost: $("partscost").value.trim(),
         next: $("next").value.trim(),
-        notes: $("notes").value.trim(),
-        repairs: $("repairs").value.trim(),
+        notesrepairs: $("notesrepairs").value.trim(),
         output: $("output").textContent
       };
       localStorage.setItem("pm_note_tool_draft_v1", JSON.stringify(payload));
@@ -293,8 +249,7 @@
       const partscostRaw = $("partscost").value.trim();
       const partscost = partscostRaw ? partscostRaw : "Unknown";
 
-      const notes = $("notes").value.trim() || "None";
-      const repairs = $("repairs").value.trim() || "";
+      const notesrepairs = $("notesrepairs").value.trim() || "None";
 
       let report =
 `PM
@@ -308,8 +263,8 @@ ${date}
 Equipment on Site:
 ${equipmentExpanded}
 
-Note:
-${notes}
+Notes / Repairs:
+${notesrepairs}
 
 Work done:
 ${workdone}
@@ -322,13 +277,10 @@ ${partscost}
 
 Parts needed for next PM:
 ${next}
+
+Pictures:
+Nameplate photos attached.
 `;
-
-      report += repairs
-        ? `\nRecommended repairs:\n${repairs}\n`
-        : `\nRecommended repairs:\nNone\n`;
-
-      report += `\nPictures:\nNameplate photos attached.\n`;
 
       $("output").textContent = report;
       saveDraft();
@@ -359,8 +311,7 @@ ${next}
       $("used").value = "";
       $("partscost").value = "";
       $("next").value = "";
-      $("notes").value = "";
-      $("repairs").value = "";
+      $("notesrepairs").value = "";
       $("output").textContent = "(Report will appear here)";
       saveDraft();
     }
@@ -388,7 +339,7 @@ ${next}
     $("date").value = defaultDate();
     $("workdone").value = "Changed filters/belts and verified operations of equipment";
 
-    ["location","date","workdone","equipment","used","partscost","next","notes","repairs"].forEach(id => {
+    ["location","date","workdone","equipment","used","partscost","next","notesrepairs"].forEach(id => {
       $(id).addEventListener("input", saveDraft);
     });
 

@@ -26,26 +26,26 @@ pre{background:#f5f5f5;padding:14px;white-space:pre-wrap;border-radius:8px;}
 <div class="small" id="draftStatus"></div>
 
 <label>Location</label>
-<input id="location">
+<input id="location" placeholder="Take five – Waukesha – Moreland Avenue">
 
 <label>Date</label>
 <input id="date">
 
-<label>Equipment on Site</label>
-<textarea id="equipment"></textarea>
+<label>Equipment on Site (counts or codes)</label>
+<textarea id="equipment" placeholder="Example: one rtu, one furnace, two radiant heaters OR RTU1, F1, RH1, RH2"></textarea>
 
-<label>Notes / Repairs</label>
-<textarea id="notes"></textarea>
+<label>Notes / Repairs (say it naturally)</label>
+<textarea id="notes" placeholder="Leave blank if everything is running good. You can also say: RTU needs blower motor and belt."></textarea>
 
-<label>Parts used</label>
-<input id="used">
+<label>Parts used (filters / belts / etc.)</label>
+<input id="used" placeholder="Example: 1 AX-34 belt, one 16 by 25 by one, four 16 by 16 by twos">
 
 <label>Cost of parts</label>
-<input id="cost">
+<input id="cost" placeholder="Example: $23 (or leave blank)">
 
 <label>Parts needed next PM</label>
 <div class="inline">
-  <input id="next">
+  <input id="next" placeholder="Tap Same if identical to Parts used">
   <button id="same" type="button">Same</button>
 </div>
 
@@ -72,14 +72,14 @@ function today(){
 /* ---------- defaults ---------- */
 const DEFAULT_WORKDONE="Changed filters/belts and verified operations of equipment";
 const DEFAULT_NOTES="All units are running good at this time.";
-const DRAFT_KEY="pm_tool_draft_v2";
+const DRAFT_KEY="pm_tool_draft_v3";
 
 /* ---------- number conversion ---------- */
 const numMap={
   one:"1",two:"2",three:"3",four:"4",five:"5",
   six:"6",seven:"7",eight:"8",nine:"9",ten:"10",
   ones:"1",twos:"2",threes:"3",fours:"4",fives:"5",
-  // iPhone dictation screwups: "to/too" instead of "two" (we only use it in parts/equipment contexts)
+  // iPhone dictation screwups
   to:"2",too:"2"
 };
 
@@ -98,7 +98,7 @@ function expandEquipmentCounts(text){
   t=t.replace(/\s+and\s+/g,",");
   t=t.replace(/\s{2,}/g," ").trim();
 
-  // Handle RT dictation variants BEFORE mapping
+  // RT dictation variants
   t=t.replace(/\brt\s*you\b/g,"rtu");
   t=t.replace(/\brt\s*u\b/g,"rtu");
   t=t.replace(/\brt\b/g,"rtu");
@@ -123,7 +123,8 @@ function expandEquipmentCounts(text){
   ];
 
   for(const m of map){
-    const r=new RegExp("\\b"+m[0].replace(/[-/\\^$*+?.()|[\]{}]/g,"\\$&")+"\\b","g");
+    const safe=m[0].replace(/[-/\\^$*+?.()|[\]{}]/g,"\\$&");
+    const r=new RegExp("\\b"+safe+"\\b","g");
     t=t.replace(r,m[1]);
   }
 
@@ -142,10 +143,11 @@ function expandEquipmentCounts(text){
       }
     }
 
-    // If they typed codes directly like "RH1"
-    const direct=p.toUpperCase().match(/\b(rtu|rh|uh|f|ef|mua)\s*(\d+)\b/i);
+    // Direct code entry: "RH2" / "rtu 1" / "RTU1"
+    const direct=p.toUpperCase().match(/\b(RTU|RH|UH|F|EF|MUA)\s*-?\s*(\d+)\b/);
     if(direct){
-      out.push(direct[1].toUpperCase()+direct[2]);
+      out.push(direct[1]+direct[2]);
+      continue;
     }
   }
 
@@ -175,21 +177,46 @@ function expandEquipment(codeCsv){
   return out.length ? out.join("\n") : "Not listed";
 }
 
-/* ---------- parts parsing (voice -> "N – AxBxC") ---------- */
+function parseEquipCodes(codeCsv){
+  return (codeCsv||"").split(",").map(s=>s.trim()).filter(Boolean);
+}
+
+function firstUnitOfType(equipCodes, type){
+  for(const c of equipCodes){
+    if(c.startsWith(type)) return c;
+  }
+  return null;
+}
+
+/* ---------- parts parsing (filters + belts) ---------- */
+/*
+Goal output examples:
+- "1 ax 34 belt" -> "1 – AX-34 belt"
+- "1 bx35 belt" -> "1 – BX-35 belt"
+- "1x16x25 buy 1" -> "1 – 16x25x1"
+- "4x16x16 x 2" -> "4 – 16x16x2"
+*/
 function normalizeParts(text){
   let t=(text||"").toLowerCase().trim();
   if(!t) return "";
 
+  // Fix dictation typo: buy -> by
+  t=t.replace(/\bbuy\b/g,"by");
+
+  // Convert "and" to commas
   t=t.replace(/\s+and\s+/g,",");
   t=t.replace(/\s{2,}/g," ").trim();
 
   // Convert number words
   t=convertNumbers(t);
 
-  // Normalize "by" to x
+  // Normalize belt expressions early (ax 34 -> ax-34, bx 35 -> bx-35)
+  t=t.replace(/\b(ax|bx|cx|a|b|c)\s*-?\s*(\d+)\b/g, (m, pre, num) => `${pre}-${num}`);
+
+  // Normalize "by" to x for sizes (filters)
   t=t.replace(/\s+by\s+/g," x ");
 
-  // Fix: "20 25 x 2" -> "20x25x2"
+  // Fix: "16 25 x 1" -> "16x25x1"
   t=t.replace(/\b(\d+)\s+(\d+)\s*x\s*(\d+)\b/g,"$1x$2x$3");
 
   // Tighten: "16 x 25 x 1" -> "16x25x1"
@@ -199,28 +226,156 @@ function normalizeParts(text){
   const out=[];
 
   for(let item of items){
+    item=item.replace(/\s{2,}/g," ").trim();
+    if(!item) continue;
+
+    // --- BELTS ---
+    // Examples:
+    // "1 ax-34 belt"
+    // "2 bx-35 belts"
+    // "1 ax-34"
+    // "1 bx-35"
+    let beltMatch=item.match(/^(\d+)\s+(ax|bx|cx|a|b|c)-(\d+)\s*(belt|belts)?$/);
+    if(beltMatch){
+      const qty=beltMatch[1];
+      const prefix=beltMatch[2].toUpperCase();
+      const num=beltMatch[3];
+      out.push(`${qty} – ${prefix}-${num} belt`);
+      continue;
+    }
+
+    // Sometimes dictation glues: "1ax-34 belt"
+    beltMatch=item.match(/^(\d+)(ax|bx|cx|a|b|c)-(\d+)\s*(belt|belts)?$/);
+    if(beltMatch){
+      const qty=beltMatch[1];
+      const prefix=beltMatch[2].toUpperCase();
+      const num=beltMatch[3];
+      out.push(`${qty} – ${prefix}-${num} belt`);
+      continue;
+    }
+
+    // --- FILTERS / SIZES ---
     // Remove filler words
     item=item.replace(/\b(filters?|filter|pleated)\b/g,"").trim();
     item=item.replace(/\s{2,}/g," ").trim();
 
-    // Handle glued count: "1x16x25x1" -> "1 – 16x25x1"
+    // Handle glued count: "4x16x16x2" -> "4 – 16x16x2"
     item=item.replace(/\b(\d+)x(\d+x\d+x\d+)\b/g,"$1 – $2");
 
-    // Standard: "1 16x25x1" -> "1 – 16x25x1"
+    // Handle "1 16x25x1" -> "1 – 16x25x1"
     item=item.replace(/\b(\d+)\s+(\d+x\d+x\d+)\b/g,"$1 – $2");
 
-    // Already dashed
+    // Handle "1 - 16x25x1" -> "1 – 16x25x1"
     item=item.replace(/\b(\d+)\s*[-–]\s*(\d+x\d+x\d+)\b/g,"$1 – $2");
 
-    // If it still contains a size but no count, keep it raw
+    // If still contains size and no qty-dash, keep as-is
     if(/\d+x\d+x\d+/.test(item) && !/^\d+\s*–/.test(item)){
       out.push(item);
-    } else if(item){
-      out.push(item);
+      continue;
     }
+
+    if(item) out.push(item);
   }
 
   return out.join(", ");
+}
+
+/* ---------- notes -> recommended repairs extraction ---------- */
+/*
+You type/speak everything in one box.
+We split into:
+- Notes / Repairs (general)
+- Recommended repairs (equipment-specific lines)
+*/
+function extractRepairsFromNotes(notesText, equipCodes){
+  const text=(notesText||"").trim();
+  if(!text) return { general:"", repairs:[] };
+
+  // Split into lines or sentences-ish
+  // (Keep it simple and predictable.)
+  const rawPieces=text
+    .replace(/\r/g,"")
+    .split(/\n+|(?<=[.?!])\s+/)
+    .map(s=>s.trim())
+    .filter(Boolean);
+
+  const repairs=[];
+  const generalPieces=[];
+
+  function normalizeEquipMention(s){
+    let t=s.toLowerCase();
+
+    // RT dictation variants
+    t=t.replace(/\brt\s*you\b/g,"rtu");
+    t=t.replace(/\brt\s*u\b/g,"rtu");
+    t=t.replace(/\brt\b/g,"rtu");
+
+    // Convert number words / to/too
+    t=convertNumbers(t);
+
+    // Canonical equipment type words
+    t=t.replace(/\brooftop unit\b|\brooftop units\b|\brtu\b/g,"rtu");
+    t=t.replace(/\bfurnace\b|\bfurnaces\b/g,"f");
+    t=t.replace(/\bradiant heater\b|\bradiant heaters\b/g,"rh");
+    t=t.replace(/\bunit heater\b|\bunit heaters\b/g,"uh");
+    t=t.replace(/\bmake[\s-]?up air\b/g,"mua");
+    t=t.replace(/\bexhaust fan\b|\bexhaust fans\b/g,"ef");
+
+    // "rtu 2" -> "RTU2"
+    t=t.replace(/\b(rtu|rh|uh|mua|ef|f)\s*-?\s*(\d+)\b/g, (_, a, n) => `${a.toUpperCase()}${n}`);
+
+    return t;
+  }
+
+  function inferUnitFromType(normalized, type){
+    // If explicit unit exists like RTU2
+    const explicit=normalized.match(new RegExp(`\\b${type}\\d+\\b`));
+    if(explicit) return explicit[0];
+
+    // Otherwise default to first unit of that type if present
+    const inferred=firstUnitOfType(equipCodes, type);
+    return inferred;
+  }
+
+  function looksLikeRepair(normalized){
+    // Keywords that imply repair action
+    return /\b(needs?|need|replace|replaced|failed|bad|not working|no heat|no cooling|leaking|noise|loud|broken|repair|recommend|suggest)\b/i.test(normalized);
+  }
+
+  for(const piece of rawPieces){
+    const norm=normalizeEquipMention(piece);
+
+    // Determine which unit it refers to
+    let unit=null;
+    const types=["RTU","F","RH","UH","MUA","EF"];
+    for(const type of types){
+      const found=inferUnitFromType(norm, type);
+      if(found){
+        // Only treat as unit-repair if it smells like a repair statement
+        if(looksLikeRepair(norm)){
+          unit=found;
+          break;
+        }
+      }
+    }
+
+    if(unit){
+      // Clean the message: remove leading unit words like "rtu", "rtu1", etc.
+      let msg=piece.trim();
+      // If they started with "RTU" etc, keep message but remove redundant unit prefix.
+      msg=msg.replace(/^(rtu|rt|furnace|f|rh|radiant heater|radiant heaters|uh|unit heater|unit heaters|mua|make[\s-]?up air|ef|exhaust fan|exhaust fans)\s*-?\s*(one|two|three|four|five|six|seven|eight|nine|ten|\d+)?\s*/i,"");
+      msg=msg.replace(/^\s*[:\-–]\s*/,"");
+      if(!msg) msg="Recommended repair.";
+      repairs.push(`${unit} – ${msg}`);
+    } else {
+      generalPieces.push(piece);
+    }
+  }
+
+  return {
+    general: generalPieces.join(" ").trim(),
+    repairs
+  };
 }
 
 /* ---------- draft save/restore ---------- */
@@ -254,8 +409,7 @@ function setFields(d){
 function saveDraft(){
   try{
     localStorage.setItem(DRAFT_KEY, JSON.stringify(getFields()));
-    const status=document.getElementById("draftStatus");
-    status.textContent="Draft saved.";
+    document.getElementById("draftStatus").textContent="Draft saved.";
   }catch(e){}
 }
 
@@ -265,12 +419,11 @@ function loadDraft(){
   try{
     const d=JSON.parse(raw);
     setFields(d);
-    const status=document.getElementById("draftStatus");
     if(d.savedAt){
       const dt=new Date(d.savedAt);
-      status.textContent="Restored draft from " + dt.toLocaleString();
+      document.getElementById("draftStatus").textContent="Restored draft from " + dt.toLocaleString();
     } else {
-      status.textContent="Restored draft.";
+      document.getElementById("draftStatus").textContent="Restored draft.";
     }
     return true;
   }catch(e){
@@ -289,11 +442,18 @@ document.getElementById("generate").onclick=function(){
   const date=document.getElementById("date").value || today();
 
   const equipRaw=document.getElementById("equipment").value || "";
-  const equipCodes=expandEquipmentCounts(equipRaw);
-  const equip=expandEquipment(equipCodes);
+  const equipCodesCsv=expandEquipmentCounts(equipRaw);
+  const equipCodes=parseEquipCodes(equipCodesCsv);
+  const equip=expandEquipment(equipCodesCsv);
 
-  let notes=(document.getElementById("notes").value || "").trim();
-  if(!notes) notes=DEFAULT_NOTES;
+  const notesRaw=(document.getElementById("notes").value || "").trim();
+  const extracted=extractRepairsFromNotes(notesRaw, equipCodes);
+
+  const generalNotes = extracted.general ? extracted.general : "";
+  const repairsList = extracted.repairs;
+
+  // Default note only when BOTH are empty
+  const notesFinal = (generalNotes || repairsList.length) ? (generalNotes || "See recommended repairs.") : DEFAULT_NOTES;
 
   const usedRaw=document.getElementById("used").value || "";
   const used=usedRaw ? (normalizeParts(usedRaw) || usedRaw) : "None";
@@ -303,6 +463,8 @@ document.getElementById("generate").onclick=function(){
 
   const cost=document.getElementById("cost").value || "Unknown";
   const workdone=document.getElementById("workdone").value || DEFAULT_WORKDONE;
+
+  const repairsBlock = repairsList.length ? repairsList.join("\n") : "None";
 
   const report=`PM
 
@@ -316,7 +478,10 @@ Equipment on Site:
 ${equip}
 
 Notes / Repairs:
-${notes}
+${notesFinal}
+
+Recommended repairs:
+${repairsBlock}
 
 Work done:
 ${workdone}
@@ -360,14 +525,12 @@ document.getElementById("clear").onclick=function(){
   document.getElementById("draftStatus").textContent="Cleared.";
 };
 
-/* ---------- autosave wiring ---------- */
 function wireAutosave(){
   const ids=["location","date","equipment","notes","used","cost","next","workdone"];
   ids.forEach(id=>{
     document.getElementById(id).addEventListener("input", saveDraft);
   });
 
-  // Extra safety: save when tab is backgrounded / screen locks
   document.addEventListener("visibilitychange", ()=>{
     if(document.visibilityState==="hidden") saveDraft();
   });
@@ -375,13 +538,10 @@ function wireAutosave(){
   window.addEventListener("pagehide", saveDraft);
 }
 
-/* ---------- init ---------- */
 (function init(){
-  // set defaults first
   document.getElementById("date").value=today();
   document.getElementById("workdone").value=DEFAULT_WORKDONE;
 
-  // restore if exists
   const restored=loadDraft();
   if(!restored){
     document.getElementById("draftStatus").textContent="No saved draft yet.";

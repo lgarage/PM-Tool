@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PM Capture (v1)</title>
+  <title>PM Note Tool (v1)</title>
   <style>
     body { font-family: -apple-system, system-ui, Segoe UI, Roboto, Arial, sans-serif; margin: 16px; }
     .card { max-width: 760px; margin: 0 auto; }
@@ -15,15 +15,17 @@
     button { font-size: 16px; padding: 12px 14px; margin-top: 14px; width: 100%; }
     .small { font-size: 13px; opacity: 0.8; margin-top: 6px; }
     pre { white-space: pre-wrap; word-wrap: break-word; background: #f6f6f6; padding: 12px; border-radius: 8px; }
+    .pillbar { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .pill { font-size: 14px; padding: 8px 10px; border: 1px solid #ccc; border-radius: 999px; background: #fff; width: auto; }
   </style>
 </head>
 <body>
   <div class="card">
     <h2>PM Note Tool (v1)</h2>
-    <div class="small">Tip: tap any field and use your iPhone keyboard mic for speech-to-text.</div>
+    <div class="small">Tip: tap any field and use your iPhone keyboard mic for speech-to-text. The equipment field auto-normalizes speech like “unit heater one” → UH1.</div>
 
     <label>Location</label>
-    <input id="location" placeholder="Take 5 – Brown Deer Rd – Milwaukee" />
+    <input id="location" placeholder="Take 5 – Kenosha – 52nd St." />
 
     <div class="row">
       <div>
@@ -37,20 +39,29 @@
     </div>
 
     <label>Equipment on Site</label>
-    <div class="small">Use codes like: RTU1, F1, RH1, RH2, MUA1, EF1 (we’ll expand them automatically).</div>
-    <textarea id="equipment" placeholder="Example: RTU1, F1, RH1, RH2, MUA1, EF1"></textarea>
+    <div class="small">Use codes or speak naturally: “UH one, furnace one, radiant heater two, make up air one, exhaust fan one, RTU one”.</div>
+    <textarea id="equipment" placeholder="Example: UH1, F1, RH1, RH2, MUA1, EF1, RTU1"></textarea>
+
+    <div class="pillbar">
+      <button class="pill" type="button" data-add="RTU">+ RTU</button>
+      <button class="pill" type="button" data-add="F">+ Furnace</button>
+      <button class="pill" type="button" data-add="RH">+ Radiant</button>
+      <button class="pill" type="button" data-add="UH">+ Unit Heater</button>
+      <button class="pill" type="button" data-add="MUA">+ MUA</button>
+      <button class="pill" type="button" data-add="EF">+ Exhaust</button>
+    </div>
 
     <label>Parts used (filters / belts / etc.)</label>
-    <input id="used" placeholder="Example: 1 – 16x25x1 pleated filter; 1 – BX35 belt" />
+    <input id="used" placeholder="Example: 1 – 14x20x1; 1 – BX35 belt" />
 
     <label>Cost of parts (if known)</label>
-    <input id="partscost" placeholder="Example: $38.50 (or leave blank)" />
+    <input id="partscost" placeholder="Example: $23 (or leave blank)" />
 
     <label>Parts needed for next PM</label>
-    <input id="next" placeholder="Example: 1 – 16x25x1 pleated filter; 1 – BX35 belt" />
+    <input id="next" placeholder="Example: 1 – 14x20x1; 1 – BX35 belt" />
 
     <label>Notes</label>
-    <textarea id="notes" placeholder="Example: All equipment operating normally at time of inspection."></textarea>
+    <textarea id="notes" placeholder="Example: All seems to be working properly."></textarea>
 
     <label>Recommended repairs (equipment-specific)</label>
     <textarea id="repairs" placeholder="Example: RTU1 needs BX35 belt, induced draft motor, condenser fan motor/blade/capacitor."></textarea>
@@ -79,7 +90,6 @@
       ["RH", "Radiant Heater"],
       ["UH", "Unit Heater"],
       ["MUA", "Make-Up Air Unit"],
-      ["MAU", "Make-Up Air Unit"], // alias, just in case
       ["EF", "Exhaust Fan"],
       ["AHU", "Air Handling Unit"],
       ["AC", "Condensing Unit"],
@@ -93,15 +103,67 @@
       ["HWP", "Hot Water Pump"],
     ]);
 
+    // Normalize iPhone speech-to-text patterns into our codes.
+    // Examples:
+    // "UH one" -> "UH1"
+    // "unit heater one" -> "UH1"
+    // "radiant heater two" -> "RH2"
+    // "make up air one" -> "MUA1"
+    function normalizeSpeechInput(text) {
+      if (!text) return "";
+
+      const numberMap = {
+        "one": "1",
+        "two": "2",
+        "three": "3",
+        "four": "4",
+        "five": "5",
+        "six": "6",
+        "seven": "7",
+        "eight": "8",
+        "nine": "9",
+        "ten": "10",
+      };
+
+      // Phrase-to-code replacements (order matters: longer phrases first)
+      const phraseMap = [
+        ["rooftop unit", "RTU"],
+        ["roof top unit", "RTU"],
+        ["unit heater", "UH"],
+        ["radiant heater", "RH"],
+        ["make up air", "MUA"],
+        ["make-up air", "MUA"],
+        ["exhaust fan", "EF"],
+        ["furnace", "F"],
+        ["rtu", "RTU"], // if it comes through lowercase
+      ];
+
+      let result = text.toLowerCase();
+
+      for (const [phrase, code] of phraseMap) {
+        const re = new RegExp(`\\b${phrase.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")}\\b`, "g");
+        result = result.replace(re, code.toLowerCase());
+      }
+
+      // Convert number words to digits
+      for (const [word, digit] of Object.entries(numberMap)) {
+        const re = new RegExp(`\\b${word}\\b`, "g");
+        result = result.replace(re, digit);
+      }
+
+      // Join code + number: "uh 1" -> "UH1"
+      result = result.replace(/\b(rtu|uh|rh|mua|ef|f)\s*(\d+)\b/g, (m, p1, p2) => `${p1.toUpperCase()}${p2}`);
+
+      return result;
+    }
+
     function expandEquipmentToken(token) {
-      // Accept things like RTU1, RTU-1, RTU 1
       const t = token.trim();
       if (!t) return "";
 
-      // Normalize: remove spaces, keep hyphen optional
       const compact = t.replace(/\s+/g, "");
       const m = compact.match(/^([A-Za-z]+)-?(\d+)$/);
-      if (!m) return t; // keep original if it doesn't match pattern
+      if (!m) return t;
 
       const prefix = m[1].toUpperCase();
       const num = m[2];
@@ -115,7 +177,7 @@
       const text = (raw || "").trim();
       if (!text) return "Not listed";
 
-      // Split on commas, semicolons, or newlines; then split remaining chunks by spaces if needed
+      // Split on commas, semicolons, or newlines
       const chunks = text
         .split(/[\n,;]+/)
         .map(s => s.trim())
@@ -123,17 +185,12 @@
 
       const tokens = [];
       for (const c of chunks) {
-        // If they dictated "RTU1 RH1 RH2" in one chunk, split by spaces
         const parts = c.split(/\s+/).filter(Boolean);
         if (parts.length <= 1) tokens.push(c);
         else parts.forEach(p => tokens.push(p));
       }
 
-      const expanded = tokens
-        .map(expandEquipmentToken)
-        .filter(Boolean);
-
-      // Render one per line (clean for copy/paste)
+      const expanded = tokens.map(expandEquipmentToken).filter(Boolean);
       return expanded.join("\n");
     }
 
@@ -175,14 +232,16 @@
       const location = $("location").value.trim() || "[Location]";
       const date = $("date").value.trim() || defaultDate();
       const workdone = $("workdone").value.trim() || "Changed filters/belts and verified operations of equipment";
-      const equipmentRaw = $("equipment").value.trim();
-      const equipmentExpanded = expandEquipmentList(equipmentRaw);
+
+      // Normalize speech-to-text, then expand into labeled list
+      const equipmentNormalized = normalizeSpeechInput($("equipment").value.trim());
+      const equipmentExpanded = expandEquipmentList(equipmentNormalized);
 
       const used = $("used").value.trim() || "None";
       const partscost = $("partscost").value.trim() || "Unknown";
       const next = $("next").value.trim() || "None";
       const notes = $("notes").value.trim() || "None";
-      const repairs = $("repairs").value.trim();
+      const repairs = $("repairs").value.trim() || "";
 
       let report =
 `PM
@@ -212,11 +271,9 @@ Parts needed for next PM:
 ${next}
 `;
 
-      if (repairs) {
-        report += `\nRecommended repairs:\n${repairs}\n`;
-      } else {
-        report += `\nRecommended repairs:\nNone\n`;
-      }
+      report += repairs
+        ? `\nRecommended repairs:\n${repairs}\n`
+        : `\nRecommended repairs:\nNA\n`;
 
       report += `\nPictures:\nNameplate photos attached.\n`;
 
@@ -255,6 +312,26 @@ ${next}
       saveDraft();
     }
 
+    function nextNumberFor(prefix, currentText) {
+      const re = new RegExp(`\\b${prefix}\\s*-?\\s*(\\d+)\\b`, "gi");
+      let max = 0;
+      let m;
+      while ((m = re.exec(currentText)) !== null) {
+        const n = parseInt(m[1], 10);
+        if (!Number.isNaN(n)) max = Math.max(max, n);
+      }
+      return max + 1;
+    }
+
+    function addEquip(prefix) {
+      const current = $("equipment").value.trim();
+      const n = nextNumberFor(prefix, current);
+      const token = `${prefix}${n}`;
+      const sep = current ? (current.endsWith("\n") ? "" : "\n") : "";
+      $("equipment").value = current + sep + token;
+      $("equipment").dispatchEvent(new Event("input"));
+    }
+
     // Init defaults
     $("date").value = defaultDate();
     $("workdone").value = "Changed filters/belts and verified operations of equipment";
@@ -267,6 +344,11 @@ ${next}
     $("generate").addEventListener("click", generateReport);
     $("copy").addEventListener("click", copyReport);
     $("clear").addEventListener("click", clearForm);
+
+    // Equipment quick-add buttons
+    document.querySelectorAll("button.pill[data-add]").forEach(btn => {
+      btn.addEventListener("click", () => addEquip(btn.getAttribute("data-add")));
+    });
 
     loadDraft();
   </script>

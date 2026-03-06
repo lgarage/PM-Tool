@@ -725,10 +725,10 @@ document.getElementById("generate").onclick = function(){
   }
 
   const usedRaw = document.getElementById("used").value || "";
-  const used = usedRaw ? usedRaw : "None";
+const used = usedRaw ? normalizeParts(usedRaw) : "None";
 
-  const nextRaw = document.getElementById("next").value || "";
-  const next = nextRaw ? nextRaw : "None";
+const nextRaw = document.getElementById("next").value || "";
+const next = nextRaw ? normalizeParts(nextRaw) : "None";
 
   const cost = document.getElementById("cost").value || "Unknown";
   const workdone = document.getElementById("workdone").value || DEFAULT_WORKDONE;
@@ -873,3 +873,4 @@ function wireAutosave(){
 </script>
 </body>
 </html>
+

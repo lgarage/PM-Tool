@@ -756,14 +756,64 @@ function wireAutosave(){
     document.getElementById(id).addEventListener("input", saveDraft);
   });
 
-  // auto-format location whenever user leaves the field
-  document.getElementById("location").addEventListener("blur", () => {
-    const current = document.getElementById("location").value;
+  function formatLocationField(){
+    const el = document.getElementById("location");
+    const current = el.value;
     if(current.trim()){
-      document.getElementById("location").value = formatTake5Location(current);
+      el.value = formatTake5Location(current);
       saveDraft();
     }
-  });
+  }
+
+  function formatEquipmentField(){
+    const el = document.getElementById("equipment");
+    const current = el.value;
+    if(current.trim()){
+      const formatted = expandEquipment(expandEquipmentCounts(current));
+      el.value = formatted.replace(/\n/g, ", ");
+      saveDraft();
+    }
+  }
+
+  function formatUsedField(){
+    const el = document.getElementById("used");
+    const current = el.value;
+    if(current.trim()){
+      el.value = normalizeParts(current);
+      saveDraft();
+    }
+  }
+
+  function formatNextField(){
+    const el = document.getElementById("next");
+    const current = el.value;
+    if(current.trim()){
+      el.value = normalizeParts(current);
+      saveDraft();
+    }
+  }
+
+  // blur formatting
+  document.getElementById("location").addEventListener("blur", formatLocationField);
+  document.getElementById("equipment").addEventListener("blur", formatEquipmentField);
+  document.getElementById("used").addEventListener("blur", formatUsedField);
+  document.getElementById("next").addEventListener("blur", formatNextField);
+
+  // Enter key formatting
+  function addEnterFormatter(id, formatter){
+    document.getElementById(id).addEventListener("keydown", (e) => {
+      if(e.key === "Enter"){
+        e.preventDefault();
+        formatter();
+        e.target.blur();
+      }
+    });
+  }
+
+  addEnterFormatter("location", formatLocationField);
+  addEnterFormatter("equipment", formatEquipmentField);
+  addEnterFormatter("used", formatUsedField);
+  addEnterFormatter("next", formatNextField);
 
   document.addEventListener("visibilitychange", () => {
     if(document.visibilityState === "hidden") saveDraft();
@@ -771,18 +821,7 @@ function wireAutosave(){
 
   window.addEventListener("pagehide", saveDraft);
 }
-
-(function init(){
-  document.getElementById("date").value = today();
-  document.getElementById("workdone").value = DEFAULT_WORKDONE;
-
-  const restored = loadDraft();
-  if(!restored){
-    document.getElementById("draftStatus").textContent = "No saved draft yet.";
-  }
-
-  wireAutosave();
-})();
 </script>
 </body>
 </html>
+

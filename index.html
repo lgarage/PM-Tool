@@ -111,8 +111,8 @@ pre{
 <label>Notes / Repairs</label>
 <textarea id="notes" placeholder="Leave blank if everything is running good."></textarea>
 
-<label>Parts used (filters / belts / etc.)</label>
-<textarea id="used" placeholder="Example: one AX 35 belt and one 16 by 25 by one and two 20 by 25 by twos"></textarea>
+<label>Parts used</label>
+<textarea id="used" placeholder="Example: two 4l190 belts and two 20 by 24 by 2 filters"></textarea>
 
 <label>Cost of parts</label>
 <input id="cost" placeholder="Example: $23">
@@ -138,6 +138,7 @@ pre{
 </div>
 
 <script>
+/* ---------- basics ---------- */
 function pad2(n){
   return String(n).padStart(2, "0");
 }
@@ -149,12 +150,15 @@ function today(){
 
 const DEFAULT_WORKDONE = "Changed filters/belts and verified operations of equipment";
 const DEFAULT_NOTES = "All units are running good at this time.";
-const DRAFT_KEY = "pm_tool_draft_v11";
+const DRAFT_KEY = "pm_tool_draft_v12";
 
+/* ---------- master lists ---------- */
 const KNOWN_FILTER_SIZES = [
-  "16x16x2","16x20x2","16x24x2","16x25x2","18x20x2","18x24x2","18x25x2",
-  "20x20x2","20x24x2","20x25x2","20x30x2","20x35x2","24x24x1","24x24x2","24x24x4",
-  "14x20x1","16x25x1"
+  "14X20X1",
+  "16X16X2","16X20X2","16X24X2","16X25X1","16X25X2",
+  "18X20X2","18X24X2","18X25X2",
+  "20X20X2","20X24X2","20X25X2","20X30X2","20X35X2",
+  "24X24X1","24X24X2","24X24X4"
 ];
 
 const KNOWN_BELTS = [
@@ -165,21 +169,13 @@ const KNOWN_BELTS = [
   "B38","B42","B44","B46","B49","B54","B56","B57","B61","B62","B64","B65","B66","B68","B75","B81","B96"
 ];
 
+/* ---------- numbers ---------- */
 const NUM_MAP = {
   zero:"0",
   one:"1", two:"2", three:"3", four:"4", five:"5",
   six:"6", seven:"7", eight:"8", nine:"9", ten:"10",
   ones:"1", twos:"2", threes:"3", fours:"4", fives:"5",
   to:"2", too:"2"
-};
-
-const EQUIP_LABELS = {
-  RTU:"Rooftop Unit",
-  F:"Furnace",
-  UH:"Unit Heater",
-  RH:"Radiant Heater",
-  EF:"Exhaust Fan",
-  MUA:"Make-Up Air Unit"
 };
 
 function convertNumbers(text){
@@ -191,6 +187,7 @@ function convertNumbers(text){
   return t;
 }
 
+/* ---------- fuzzy helpers ---------- */
 function levenshtein(a, b){
   const m = a.length;
   const n = b.length;
@@ -228,8 +225,7 @@ function closestMatch(value, list, maxDistance){
   return bestScore <= maxDistance ? best : value;
 }
 
-/* ---------- auto-grow textareas ---------- */
-
+/* ---------- auto-grow ---------- */
 function autoGrow(el){
   if(!el) return;
   el.style.height = "auto";
@@ -237,7 +233,6 @@ function autoGrow(el){
 }
 
 /* ---------- location ---------- */
-
 function titleCaseWords(str){
   return str
     .split(" ")
@@ -303,6 +298,14 @@ function formatTake5Location(raw){
 }
 
 /* ---------- equipment ---------- */
+const EQUIP_LABELS = {
+  RTU:"Rooftop Unit",
+  F:"Furnace",
+  UH:"Unit Heater",
+  RH:"Radiant Heater",
+  EF:"Exhaust Fan",
+  MUA:"Make-Up Air Unit"
+};
 
 function normalizeEquipmentSpeech(text){
   let t = (text || "").toLowerCase();
@@ -401,34 +404,56 @@ function formatEquipmentFieldValue(raw){
 /* ---------- parts ---------- */
 
 function normalizeFilterSize(rawSize){
-  let s = rawSize.toLowerCase().trim();
-  s = s.replace(/\bbuy\b/g, "by");
-  s = convertNumbers(s);
-  s = s.replace(/\s+by\s+/g, "x");
-  s = s.replace(/\s*x\s*/g, "x");
-  s = s.replace(/\s+/g, "");
-  s = s.replace(/[^0-9x]/g, "");
+  let s = (rawSize || "").toUpperCase().trim();
 
-  const nums = s.split("x").filter(Boolean);
+  s = s.replace(/\bbuy\b/gi, "BY");
+  s = convertNumbers(s);
+  s = s.replace(/\s+BY\s+/gi, "X");
+  s = s.replace(/\s*X\s*/gi, "X");
+  s = s.replace(/\s+/g, "");
+  s = s.replace(/[^0-9X]/g, "");
+
+  const nums = s.split("X").filter(Boolean);
   if(nums.length === 3){
-    s = `${nums[0]}x${nums[1]}x${nums[2]}`;
+    s = `${nums[0]}X${nums[1]}X${nums[2]}`;
   }
 
-  return closestMatch(s.toUpperCase(), KNOWN_FILTER_SIZES.map(x => x.toUpperCase()), 2);
+  return closestMatch(s, KNOWN_FILTER_SIZES, 2).toUpperCase();
 }
 
 function normalizeBeltCode(rawCode){
-  let s = rawCode.toUpperCase().trim();
+  let s = (rawCode || "").toUpperCase().trim();
   s = s.replace(/\s+/g, "");
   s = s.replace(/[-_]/g, "");
-
   const m = s.match(/^(AX|BX|A|B|4L)(\d+)$/);
   if(m){
     const code = m[1] + m[2];
-    return closestMatch(code, KNOWN_BELTS, 1);
+    return closestMatch(code, KNOWN_BELTS, 1).toUpperCase();
+  }
+  return closestMatch(s, KNOWN_BELTS, 1).toUpperCase();
+}
+
+function formatPartOutput(qty, value){
+  return `${qty} - ${String(value).toUpperCase()}`;
+}
+
+function recoverConcatenatedFilter(firstNum, secondNum, thirdNum){
+  const a = String(firstNum);
+  const b = String(secondNum);
+  const c = String(thirdNum);
+
+  // Try splitting the first block into qty + first dimension
+  for(let i = 1; i < a.length; i++){
+    const qty = a.slice(0, i);
+    const firstDim = a.slice(i);
+    const candidate = `${firstDim}X${b}X${c}`;
+    const matched = closestMatch(candidate, KNOWN_FILTER_SIZES, 2);
+    if(KNOWN_FILTER_SIZES.includes(matched)){
+      return `${parseInt(qty, 10)} - ${matched}`;
+    }
   }
 
-  return closestMatch(s, KNOWN_BELTS, 1);
+  return null;
 }
 
 function parsePartItem(item){
@@ -439,58 +464,101 @@ function parsePartItem(item){
   t = convertNumbers(t);
   t = t.replace(/\s{2,}/g, " ").trim();
 
-  let beltMatch = t.match(/^(\d+)\s+(ax|bx|a|b|4l)\s*-?\s*(\d+)\s*(belt|belts)?$/i);
+  // Remove filler words completely
+  t = t.replace(/\bfilters?\b/g, "").trim();
+  t = t.replace(/\bbelts?\b/g, "").trim();
+
+  // ---------- BELTS ----------
+  let beltMatch = t.match(/^(\d+)\s+(ax|bx|a|b|4l)\s*-?\s*(\d+)$/i);
   if(beltMatch){
-    const qty = beltMatch[1];
+    const qty = parseInt(beltMatch[1], 10);
     const code = normalizeBeltCode(beltMatch[2] + beltMatch[3]);
-    return [`${qty} – ${code} belt`];
+    return [formatPartOutput(qty, code)];
   }
 
-  beltMatch = t.match(/^(\d+)(ax|bx|a|b|4l)\s*-?\s*(\d+)\s*(belt|belts)?$/i);
+  beltMatch = t.match(/^(\d+)(ax|bx|a|b|4l)\s*-?\s*(\d+)$/i);
   if(beltMatch){
-    const qty = beltMatch[1];
+    const qty = parseInt(beltMatch[1], 10);
     const code = normalizeBeltCode(beltMatch[2] + beltMatch[3]);
-    return [`${qty} – ${code} belt`];
+    return [formatPartOutput(qty, code)];
   }
 
-  let filterText = t;
-  filterText = filterText.replace(/\bbuy\b/g, "by");
-  filterText = filterText.replace(/\s+by\s+/g, " x ");
-  filterText = filterText.replace(/\s*x\s*/g, " x ");
-  filterText = filterText.replace(/\b(filters?|filter|pleated)\b/g, "");
-  filterText = filterText.replace(/\s{2,}/g, " ").trim();
+  // Catch weird spacing like "2 4 l 190"
+  beltMatch = t.match(/^(\d+)\s+(4)\s*l\s*(\d+)$/i);
+  if(beltMatch){
+    const qty = parseInt(beltMatch[1], 10);
+    const code = normalizeBeltCode(`4L${beltMatch[3]}`);
+    return [formatPartOutput(qty, code)];
+  }
 
-  let m = filterText.match(/^(\d+)x(\d+)x(\d+)x(\d+)$/i);
+  // ---------- FILTERS ----------
+  let f = t;
+  f = f.replace(/\s+by\s+/g, " x ");
+  f = f.replace(/\s*x\s*/g, " x ");
+  f = f.replace(/\s{2,}/g, " ").trim();
+
+  // 4 16 20 x 2
+  let m = f.match(/^(\d+)\s+(\d+)\s+(\d+)\s*x\s*(\d+)$/i);
   if(m){
-    const qty = m[1];
+    const qty = parseInt(m[1], 10);
     const size = normalizeFilterSize(`${m[2]}x${m[3]}x${m[4]}`);
-    return [`${qty} – ${size}`];
+    return [formatPartOutput(qty, size)];
   }
 
-  m = filterText.match(/^(\d+)\s+(\d+)\s*x\s*(\d+)\s*x\s*(\d+)$/i);
+  // 4 16 x 20 x 2
+  m = f.match(/^(\d+)\s+(\d+)\s*x\s*(\d+)\s*x\s*(\d+)$/i);
   if(m){
-    const qty = m[1];
+    const qty = parseInt(m[1], 10);
     const size = normalizeFilterSize(`${m[2]}x${m[3]}x${m[4]}`);
-    return [`${qty} – ${size}`];
+    return [formatPartOutput(qty, size)];
   }
 
-  m = filterText.match(/^(\d+)\s+(\d+)\s+(\d+)\s*x\s*(\d+)$/i);
+  // 4x16x20x2
+  m = f.match(/^(\d+)x(\d+)x(\d+)x(\d+)$/i);
   if(m){
-    const qty = m[1];
+    const qty = parseInt(m[1], 10);
     const size = normalizeFilterSize(`${m[2]}x${m[3]}x${m[4]}`);
-    return [`${qty} – ${size}`];
+    return [formatPartOutput(qty, size)];
   }
 
-  m = filterText.match(/^(\d+)\s+(.+)$/i);
+  // 4 16x20x2
+  m = f.match(/^(\d+)\s+(\d+x\d+x\d+)$/i);
   if(m){
-    const qty = m[1];
+    const qty = parseInt(m[1], 10);
     const size = normalizeFilterSize(m[2]);
-    if(/\d+x\d+x\d+/i.test(size)){
-      return [`${qty} – ${size}`];
-    }
+    return [formatPartOutput(qty, size)];
   }
 
-  return [item.trim()];
+  // Weird case like "2420 24 x 2" -> try 2 - 20X24X2
+  m = f.match(/^(\d+)\s+(\d+)\s*x\s*(\d+)$/i);
+  if(m){
+    const recovered = recoverConcatenatedFilter(m[1], m[2], m[3]);
+    if(recovered) return [recovered];
+  }
+
+  // Last chance: use all numbers
+  const nums = f.match(/\d+/g);
+  if(nums && nums.length === 4){
+    const qty = parseInt(nums[0], 10);
+    const size = normalizeFilterSize(`${nums[1]}x${nums[2]}x${nums[3]}`);
+    return [formatPartOutput(qty, size)];
+  }
+
+  // Last-chance weird concatenated first block
+  if(nums && nums.length === 3){
+    const recovered = recoverConcatenatedFilter(nums[0], nums[1], nums[2]);
+    if(recovered) return [recovered];
+  }
+
+  // Last-chance belt recovery
+  const beltNums = f.match(/^(\d+)\s*(ax|bx|a|b|4l)\s*(\d+)$/i);
+  if(beltNums){
+    const qty = parseInt(beltNums[1], 10);
+    const code = normalizeBeltCode(beltNums[2] + beltNums[3]);
+    return [formatPartOutput(qty, code)];
+  }
+
+  return [item.trim().toUpperCase()];
 }
 
 function normalizeParts(text){
@@ -505,7 +573,15 @@ function normalizeParts(text){
   const out = [];
 
   items.forEach(item => {
-    parsePartItem(item).forEach(x => out.push(x));
+    parsePartItem(item).forEach(x => {
+      const cleaned = String(x)
+        .replace(/\bFILTERS?\b/gi, "")
+        .replace(/\bBELTS?\b/gi, "")
+        .replace(/\s{2,}/g, " ")
+        .trim()
+        .toUpperCase();
+      if(cleaned) out.push(cleaned);
+    });
   });
 
   return out.join(", ");
@@ -700,6 +776,7 @@ document.getElementById("same").onclick = function(){
 };
 
 document.getElementById("generate").onclick = function(){
+  // Redundant final cleanup pass
   formatLocationField();
   formatEquipmentField();
   formatUsedField();
@@ -717,18 +794,18 @@ document.getElementById("generate").onclick = function(){
   const extracted = extractRepairsFromNotes(notesRaw, equipCodes);
 
   let notesFinal = DEFAULT_NOTES;
-
   if(extracted.general){
     notesFinal = extracted.general;
   } else if(extracted.repairs.length){
     notesFinal = extracted.repairs.join("\n");
   }
 
+  // Redundant final cleanup again here
   const usedRaw = document.getElementById("used").value || "";
-const used = usedRaw ? normalizeParts(usedRaw) : "None";
+  const used = usedRaw ? normalizeParts(usedRaw) : "None";
 
-const nextRaw = document.getElementById("next").value || "";
-const next = nextRaw ? normalizeParts(nextRaw) : "None";
+  const nextRaw = document.getElementById("next").value || "";
+  const next = nextRaw ? normalizeParts(nextRaw) : "None";
 
   const cost = document.getElementById("cost").value || "Unknown";
   const workdone = document.getElementById("workdone").value || DEFAULT_WORKDONE;
@@ -756,7 +833,7 @@ ${used}
 Cost of parts (if known):
 ${cost}
 
-Parts needed for next PM:
+Parts needed next PM:
 ${next}
 
 Pictures:
@@ -873,4 +950,3 @@ function wireAutosave(){
 </script>
 </body>
 </html>
-

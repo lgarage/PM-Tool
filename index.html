@@ -441,16 +441,18 @@ function extractRepairsFromNotes(notesText, equipCodes){
   const general = [];
 
   function looksLikeRepair(s){
-    return /\b(needs?|need|replace|replaced|failed|bad|broken|repair|recommend|suggest|not working|no heat|no cooling|leaking|motor|belt|capacitor|blower|fan|heat exchanger)\b/i.test(s);
+    return /\b(needs?|need|replace|replaced|failed|bad|broken|repair|recommend|suggest|not working|no heat|no cooling|leaking|motor|belt|capacitor|blower|fan|heat exchanger|cracked)\b/i.test(s);
   }
 
   pieces.forEach(piece=>{
     const norm = normalizeNotesForParsing(piece);
     let unit = null;
 
+    // explicit unit like RTU1
     const explicit = norm.match(/\b(RTU|RH|UH|F|EF|MUA)\d+\b/i);
     if(explicit) unit = explicit[0].toUpperCase();
 
+    // infer by type if no explicit number
     if(!unit && /\brtu\b/i.test(norm)) unit = firstUnitOfType(equipCodes,"RTU");
     if(!unit && /\bfurnace\b|\bf\b/i.test(norm)) unit = firstUnitOfType(equipCodes,"F");
     if(!unit && /\bunit heater\b|\buh\b/i.test(norm)) unit = firstUnitOfType(equipCodes,"UH");
@@ -459,7 +461,14 @@ function extractRepairsFromNotes(notesText, equipCodes){
     if(!unit && /\bmua\b|make up air/i.test(norm)) unit = firstUnitOfType(equipCodes,"MUA");
 
     if(unit && looksLikeRepair(norm)){
-      repairs.push(piece);
+      let msg = piece.trim();
+
+      // remove spoken equipment reference from the front of the message
+      msg = msg.replace(/^(rtu|rt|furnace|unit heater|radiant heater|exhaust fan|make[\s-]?up air|mua|ef|rh|uh|f)\s*-?\s*(one|two|three|four|five|six|seven|eight|nine|ten|\d+)?\s*/i,"");
+      msg = msg.replace(/^\s*[:\-–]\s*/,"");
+      if(!msg) msg = "Repair needed.";
+
+      repairs.push(`${unit} – ${msg}`);
     } else {
       general.push(piece);
     }
@@ -666,6 +675,7 @@ function wireAutosave(){
 </script>
 </body>
 </html>
+
 
 
 

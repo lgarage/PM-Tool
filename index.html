@@ -34,7 +34,7 @@ textarea{
   min-height:90px;
   white-space:pre-wrap;
   overflow-wrap:break-word;
-}
+  resize:vertical;
 }
 button{
   padding:12px;
@@ -52,7 +52,10 @@ button:active{
   display:flex;
   gap:10px;
   flex-wrap:wrap;
-  align-items:center;
+  align-items:flex-start;
+}
+.inline .grow{
+  flex:1 1 320px;
 }
 .inline button{
   width:auto;
@@ -109,14 +112,16 @@ pre{
 <textarea id="notes" placeholder="Leave blank if everything is running good."></textarea>
 
 <label>Parts used (filters / belts / etc.)</label>
-<input id="used" placeholder="Example: one AX 35 belt and one 16 by 25 by one and two 20 by 25 by twos">
+<textarea id="used" placeholder="Example: one AX 35 belt and one 16 by 25 by one and two 20 by 25 by twos"></textarea>
 
 <label>Cost of parts</label>
 <input id="cost" placeholder="Example: $23">
 
 <label>Parts needed next PM</label>
 <div class="inline">
-  <input id="next" placeholder="Tap Same if identical to Parts used">
+  <div class="grow">
+    <textarea id="next" placeholder="Tap Same if identical to Parts used"></textarea>
+  </div>
   <button id="same" type="button">Same</button>
 </div>
 
@@ -144,7 +149,7 @@ function today(){
 
 const DEFAULT_WORKDONE = "Changed filters/belts and verified operations of equipment";
 const DEFAULT_NOTES = "All units are running good at this time.";
-const DRAFT_KEY = "pm_tool_draft_v10";
+const DRAFT_KEY = "pm_tool_draft_v11";
 
 const KNOWN_FILTER_SIZES = [
   "16x16x2","16x20x2","16x24x2","16x25x2","18x20x2","18x24x2","18x25x2",
@@ -221,6 +226,14 @@ function closestMatch(value, list, maxDistance){
   });
 
   return bestScore <= maxDistance ? best : value;
+}
+
+/* ---------- auto-grow textareas ---------- */
+
+function autoGrow(el){
+  if(!el) return;
+  el.style.height = "auto";
+  el.style.height = Math.max(el.scrollHeight, 90) + "px";
 }
 
 /* ---------- location ---------- */
@@ -537,7 +550,7 @@ function extractRepairsFromNotes(notesText, equipCodes){
   const pieces = text
     .replace(/\r/g,"")
     .split(/\n+|(?<=[.?!])\s+/)
-    .map(s=>s.trim())
+    .map(s => s.trim())
     .filter(Boolean);
 
   const repairs = [];
@@ -604,6 +617,11 @@ function setFields(d){
   document.getElementById("next").value = d.next || "";
   document.getElementById("workdone").value = d.workdone || DEFAULT_WORKDONE;
   document.getElementById("output").textContent = d.output || "";
+
+  autoGrow(document.getElementById("equipment"));
+  autoGrow(document.getElementById("notes"));
+  autoGrow(document.getElementById("used"));
+  autoGrow(document.getElementById("next"));
 }
 
 function saveDraft(){
@@ -648,6 +666,7 @@ function formatEquipmentField(){
   const current = el.value;
   if(current.trim()){
     el.value = formatEquipmentFieldValue(current);
+    autoGrow(el);
     saveDraft();
   }
 }
@@ -657,6 +676,7 @@ function formatUsedField(){
   const current = el.value;
   if(current.trim()){
     el.value = normalizeParts(current);
+    autoGrow(el);
     saveDraft();
   }
 }
@@ -666,6 +686,7 @@ function formatNextField(){
   const current = el.value;
   if(current.trim()){
     el.value = normalizeParts(current);
+    autoGrow(el);
     saveDraft();
   }
 }
@@ -674,6 +695,7 @@ function formatNextField(){
 
 document.getElementById("same").onclick = function(){
   document.getElementById("next").value = document.getElementById("used").value;
+  autoGrow(document.getElementById("next"));
   formatNextField();
 };
 
@@ -764,6 +786,11 @@ document.getElementById("clear").onclick = function(){
   document.getElementById("workdone").value = DEFAULT_WORKDONE;
   document.getElementById("output").textContent = "";
   document.getElementById("draftStatus").textContent = "Cleared.";
+
+  autoGrow(document.getElementById("equipment"));
+  autoGrow(document.getElementById("notes"));
+  autoGrow(document.getElementById("used"));
+  autoGrow(document.getElementById("next"));
 };
 
 function addEquipmentCode(prefix){
@@ -779,6 +806,7 @@ function addEquipmentCode(prefix){
   const nextNum = max + 1;
   const appendText = current ? current + ", " + prefix + nextNum : prefix + nextNum;
   document.getElementById("equipment").value = appendText;
+  autoGrow(document.getElementById("equipment"));
   saveDraft();
 }
 
@@ -801,7 +829,13 @@ function addEnterFormatter(id, formatter){
 
 function wireAutosave(){
   ["location","equipment","notes","used","cost","next","workdone"].forEach(id => {
-    document.getElementById(id).addEventListener("input", saveDraft);
+    const el = document.getElementById(id);
+    el.addEventListener("input", () => {
+      saveDraft();
+      if(el.tagName.toLowerCase() === "textarea"){
+        autoGrow(el);
+      }
+    });
   });
 
   document.getElementById("location").addEventListener("blur", formatLocationField);
@@ -829,10 +863,13 @@ function wireAutosave(){
     document.getElementById("draftStatus").textContent = "No saved draft yet.";
   }
 
+  autoGrow(document.getElementById("equipment"));
+  autoGrow(document.getElementById("notes"));
+  autoGrow(document.getElementById("used"));
+  autoGrow(document.getElementById("next"));
+
   wireAutosave();
 })();
 </script>
 </body>
 </html>
-
-

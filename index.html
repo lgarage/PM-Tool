@@ -158,6 +158,7 @@ function titleCaseWords(str){
 
 function normalizeStreetSuffix(street){
   let s = street.trim().toLowerCase();
+
   s = s.replace(/\bavenue\b/g, "Ave.");
   s = s.replace(/\bstreet\b/g, "St.");
   s = s.replace(/\broad\b/g, "Rd.");
@@ -167,7 +168,9 @@ function normalizeStreetSuffix(street){
   s = s.replace(/\bcourt\b/g, "Ct.");
   s = s.replace(/\bplace\b/g, "Pl.");
   s = s.replace(/\bhighway\b/g, "Hwy.");
+
   s = titleCaseWords(s);
+
   return s;
 }
 
@@ -179,34 +182,37 @@ function formatTake5Location(raw){
   t = t.replace(/\bi am at\b/g, "");
   t = t.replace(/\bim at\b/g, "");
   t = t.replace(/\bi'm at\b/g, "");
-  t = t.replace(/\bi am about to\b/g, "");
-  t = t.replace(/\bi'm about to\b/g, "");
+  t = t.replace(/\bwe are at\b/g, "");
   t = t.replace(/\bthe\b/g, "");
   t = t.replace(/\s{2,}/g, " ").trim();
 
   t = t.replace(/\btake five\b/g, "take 5");
 
-  let m = t.match(/take 5(?:\s+in)?\s+(.+?)\s+on\s+(.+)$/i);
+  let m;
+
+  // Pattern 1: take 5 in oak creek on main street
+  m = t.match(/take 5(?:\s+in)?\s+(.+?)\s+on\s+(.+)$/i);
   if(m){
     const city = titleCaseWords(m[1].trim());
     const street = normalizeStreetSuffix(m[2].trim());
     return `Take 5 - ${city} - ${street}`;
   }
 
-  m = t.match(/take 5\s+([a-z0-9\s]+?)\s+([0-9a-z\s]+(?:avenue|street|road|drive|boulevard|lane|court|place|highway))$/i);
+  // Pattern 2: take 5 on main street in oak creek
+  m = t.match(/take 5\s+on\s+(.+?)\s+in\s+(.+)$/i);
   if(m){
-    const city = titleCaseWords(m[1].trim());
-    const street = normalizeStreetSuffix(m[2].trim());
+    const street = normalizeStreetSuffix(m[1].trim());
+    const city = titleCaseWords(m[2].trim());
     return `Take 5 - ${city} - ${street}`;
   }
 
+  // fallback
   if(t.includes("take 5")){
     return titleCaseWords(t).replace("Take 5", "Take 5");
   }
 
   return titleCaseWords(t);
 }
-
 /* ---------- equipment ---------- */
 const EQUIP_LABELS = {
   RTU:"Rooftop Unit",
@@ -660,3 +666,4 @@ function wireAutosave(){
 </script>
 </body>
 </html>
+

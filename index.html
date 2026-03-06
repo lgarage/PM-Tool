@@ -49,7 +49,7 @@ pre{background:#f5f5f5;padding:14px;white-space:pre-wrap;border-radius:8px;borde
 </div>
 
 <label>Notes / Repairs</label>
-<textarea id="notes" placeholder="Leave blank if everything is running good. Example: RTU needs blower motor and belt."></textarea>
+<textarea id="notes" placeholder="Leave blank if everything is running good."></textarea>
 
 <label>Parts used (filters / belts / etc.)</label>
 <input id="used" placeholder="Example: one AX 35 belt and one 16 by 25 by one and two 20 by 25 by twos">
@@ -84,7 +84,7 @@ function today(){
 
 const DEFAULT_WORKDONE="Changed filters/belts and verified operations of equipment";
 const DEFAULT_NOTES="All units are running good at this time.";
-const DRAFT_KEY="pm_tool_draft_v5";
+const DRAFT_KEY="pm_tool_draft_v6";
 
 const KNOWN_FILTER_SIZES = [
   "16x16x2","16x20x2","16x24x2","16x25x2","18x20x2","18x24x2","18x25x2",
@@ -144,7 +144,7 @@ function closestMatch(value, list, maxDistance){
   return bestScore <= maxDistance ? best : value;
 }
 
-/* ---------- location normalizer ---------- */
+/* ---------- location ---------- */
 function titleCaseWords(str){
   return str
     .split(" ")
@@ -158,7 +158,6 @@ function titleCaseWords(str){
 
 function normalizeStreetSuffix(street){
   let s = street.trim().toLowerCase();
-
   s = s.replace(/\bavenue\b/g, "Ave.");
   s = s.replace(/\bstreet\b/g, "St.");
   s = s.replace(/\broad\b/g, "Rd.");
@@ -168,20 +167,7 @@ function normalizeStreetSuffix(street){
   s = s.replace(/\bcourt\b/g, "Ct.");
   s = s.replace(/\bplace\b/g, "Pl.");
   s = s.replace(/\bhighway\b/g, "Hwy.");
-
   s = titleCaseWords(s);
-
-  // preserve Ave./St./Rd. casing
-  s = s.replace(/\bAve\.\b/g, "Ave.");
-  s = s.replace(/\bSt\.\b/g, "St.");
-  s = s.replace(/\bRd\.\b/g, "Rd.");
-  s = s.replace(/\bDr\.\b/g, "Dr.");
-  s = s.replace(/\bBlvd\.\b/g, "Blvd.");
-  s = s.replace(/\bLn\.\b/g, "Ln.");
-  s = s.replace(/\bCt\.\b/g, "Ct.");
-  s = s.replace(/\bPl\.\b/g, "Pl.");
-  s = s.replace(/\bHwy\.\b/g, "Hwy.");
-
   return s;
 }
 
@@ -193,13 +179,13 @@ function formatTake5Location(raw){
   t = t.replace(/\bi am at\b/g, "");
   t = t.replace(/\bim at\b/g, "");
   t = t.replace(/\bi'm at\b/g, "");
-  t = t.replace(/\bwe are at\b/g, "");
+  t = t.replace(/\bi am about to\b/g, "");
+  t = t.replace(/\bi'm about to\b/g, "");
   t = t.replace(/\bthe\b/g, "");
   t = t.replace(/\s{2,}/g, " ").trim();
 
   t = t.replace(/\btake five\b/g, "take 5");
 
-  // main pattern: take 5 in wauwatosa on monroe avenue
   let m = t.match(/take 5(?:\s+in)?\s+(.+?)\s+on\s+(.+)$/i);
   if(m){
     const city = titleCaseWords(m[1].trim());
@@ -207,7 +193,6 @@ function formatTake5Location(raw){
     return `Take 5 - ${city} - ${street}`;
   }
 
-  // fallback pattern: take 5 wauwatosa monroe avenue
   m = t.match(/take 5\s+([a-z0-9\s]+?)\s+([0-9a-z\s]+(?:avenue|street|road|drive|boulevard|lane|court|place|highway))$/i);
   if(m){
     const city = titleCaseWords(m[1].trim());
@@ -215,7 +200,6 @@ function formatTake5Location(raw){
     return `Take 5 - ${city} - ${street}`;
   }
 
-  // if they already gave a cleaner version
   if(t.includes("take 5")){
     return titleCaseWords(t).replace("Take 5", "Take 5");
   }
@@ -223,7 +207,7 @@ function formatTake5Location(raw){
   return titleCaseWords(t);
 }
 
-/* ---------- equipment parsing ---------- */
+/* ---------- equipment ---------- */
 const EQUIP_LABELS = {
   RTU:"Rooftop Unit",
   F:"Furnace",
@@ -250,6 +234,9 @@ function normalizeEquipmentSpeech(text){
   t = t.replace(/\brt\s*you\b/g,"rtu");
   t = t.replace(/\brt\s*u\b/g,"rtu");
   t = t.replace(/\brt\b/g,"rtu");
+  t = t.replace(/\bhour\s*to\s*you\b/g,"rtu");
+  t = t.replace(/\bone\s*hour\s*to\s*you\b/g,"1 rtu");
+  t = t.replace(/\b1\s*hour\s*to\s*you\b/g,"1 rtu");
 
   t = t.replace(/\bfurnaces?\b/g,"furnace");
   t = t.replace(/\bunit heaters?\b/g,"unit heater");
@@ -259,7 +246,6 @@ function normalizeEquipmentSpeech(text){
   t = t.replace(/\brooftop units?\b/g,"rtu");
 
   t = convertNumbers(t);
-
   return t;
 }
 
@@ -319,7 +305,7 @@ function firstUnitOfType(codes, type){
   return codes.find(c=>c.startsWith(type)) || null;
 }
 
-/* ---------- parts parsing ---------- */
+/* ---------- parts ---------- */
 function normalizeFilterSize(rawSize){
   let s = rawSize.toLowerCase().trim();
   s = s.replace(/\bbuy\b/g,"by");
@@ -427,7 +413,7 @@ function normalizeParts(text){
   return out.join(", ");
 }
 
-/* ---------- notes to recommended repairs ---------- */
+/* ---------- notes ---------- */
 function normalizeNotesForParsing(text){
   let t = (text || "").trim();
   t = normalizeEquipmentSpeech(t);
@@ -449,7 +435,7 @@ function extractRepairsFromNotes(notesText, equipCodes){
   const general = [];
 
   function looksLikeRepair(s){
-    return /\b(needs?|need|replace|replaced|failed|bad|broken|repair|recommend|suggest|not working|no heat|no cooling|leaking|motor|belt|capacitor|blower|fan)\b/i.test(s);
+    return /\b(needs?|need|replace|replaced|failed|bad|broken|repair|recommend|suggest|not working|no heat|no cooling|leaking|motor|belt|capacitor|blower|fan|heat exchanger)\b/i.test(s);
   }
 
   pieces.forEach(piece=>{
@@ -467,11 +453,7 @@ function extractRepairsFromNotes(notesText, equipCodes){
     if(!unit && /\bmua\b|make up air/i.test(norm)) unit = firstUnitOfType(equipCodes,"MUA");
 
     if(unit && looksLikeRepair(norm)){
-      let msg = piece.trim();
-      msg = msg.replace(/^(rtu|rt|furnace|unit heater|radiant heater|exhaust fan|make[\s-]?up air|mua|ef|rh|uh|f)\s*-?\s*(one|two|three|four|five|six|seven|eight|nine|ten|\d+)?\s*/i,"");
-      msg = msg.replace(/^\s*[:\-–]\s*/,"");
-      if(!msg) msg = "Repair needed.";
-      repairs.push(`${unit} – ${msg}`);
+      repairs.push(piece);
     } else {
       general.push(piece);
     }
@@ -483,7 +465,7 @@ function extractRepairsFromNotes(notesText, equipCodes){
   };
 }
 
-/* ---------- draft save/restore ---------- */
+/* ---------- draft ---------- */
 function getFields(){
   return {
     location: document.getElementById("location").value || "",
@@ -536,7 +518,7 @@ function loadDraft(){
   }
 }
 
-/* ---------- ui actions ---------- */
+/* ---------- ui ---------- */
 document.getElementById("fixLocation").onclick = function(){
   const current = document.getElementById("location").value;
   document.getElementById("location").value = formatTake5Location(current);
@@ -564,10 +546,8 @@ document.getElementById("generate").onclick = function(){
   const notesFinal = (notesRaw && extracted.general)
     ? extracted.general
     : (notesRaw && extracted.repairs.length && !extracted.general)
-      ? "See recommended repairs."
+      ? notesRaw
       : DEFAULT_NOTES;
-
-  const repairsBlock = extracted.repairs.length ? extracted.repairs.join("\n") : "None";
 
   const usedRaw = document.getElementById("used").value || "";
   const used = usedRaw ? (normalizeParts(usedRaw) || usedRaw) : "None";
@@ -591,9 +571,6 @@ ${equip}
 
 Notes / Repairs:
 ${notesFinal}
-
-Recommended repairs:
-${repairsBlock}
 
 Work done:
 ${workdone}
@@ -657,7 +634,6 @@ document.getElementById("addRH").onclick = ()=>addEquipmentCode("RH");
 document.getElementById("addEF").onclick = ()=>addEquipmentCode("EF");
 document.getElementById("addMUA").onclick = ()=>addEquipmentCode("MUA");
 
-/* ---------- autosave ---------- */
 function wireAutosave(){
   ["location","date","equipment","notes","used","cost","next","workdone"].forEach(id=>{
     document.getElementById(id).addEventListener("input", saveDraft);
@@ -670,7 +646,6 @@ function wireAutosave(){
   window.addEventListener("pagehide", saveDraft);
 }
 
-/* ---------- init ---------- */
 (function init(){
   document.getElementById("date").value = today();
   document.getElementById("workdone").value = DEFAULT_WORKDONE;

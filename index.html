@@ -117,7 +117,7 @@ pre{
 </div>
 
 <label>Location</label>
-<input id="location" placeholder="Example: I'm at take five on Main Street in Oak Creek">
+<input id="location" placeholder="Example: I'm at the Planet Fitness in Milwaukee on Main Street">
 
 <!-- PM SECTION -->
 <div id="pmSection">
@@ -200,7 +200,7 @@ function today(){
 
 const DEFAULT_PM_WORKDONE = "Changed filters/belts and verified operations of equipment";
 const DEFAULT_PM_NOTES = "All units are running good at this time.";
-const DRAFT_KEY = "hvac_note_tool_v13";
+const DRAFT_KEY = "hvac_note_tool_v14";
 
 const KNOWN_FILTER_SIZES = [
   "14X20X1",
@@ -291,7 +291,9 @@ function titleCaseWords(str){
     .split(" ")
     .filter(Boolean)
     .map(w => {
+      const upper = w.toUpperCase();
       if(/^\d/.test(w)) return w;
+      if(["NW","NE","SW","SE"].includes(upper)) return upper;
       return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
     })
     .join(" ");
@@ -311,7 +313,19 @@ function normalizeStreetSuffix(street){
   return titleCaseWords(s);
 }
 
-function formatTake5Location(raw){
+function normalizeSiteName(name){
+  let s = (name || "").trim().toLowerCase();
+  s = s.replace(/\bthe\b/g, " ");
+  s = s.replace(/\s{2,}/g, " ").trim();
+  s = s.replace(/\btake five\b/g, "take 5");
+  s = s.replace(/\bplanet fitness\b/g, "planet fitness");
+
+  return titleCaseWords(s)
+    .replace(/\bTake 5\b/g, "Take 5")
+    .replace(/\bPlanet Fitness\b/g, "Planet Fitness");
+}
+
+function formatLocation(raw){
   let t = (raw || "").trim().toLowerCase();
   if(!t) return "";
 
@@ -320,29 +334,32 @@ function formatTake5Location(raw){
   t = t.replace(/\bim at\b/g, "");
   t = t.replace(/\bi'm at\b/g, "");
   t = t.replace(/\bwe are at\b/g, "");
-  t = t.replace(/\bthe\b/g, "");
   t = t.replace(/\s{2,}/g, " ").trim();
+
   t = t.replace(/\btake five\b/g, "take 5");
+  t = t.replace(/\bplanet fitness\b/g, "planet fitness");
 
-  let m = t.match(/take 5(?:\s+in)?\s+(.+?)\s+on\s+(.+)$/i);
-  if(m){
-    const city = titleCaseWords(m[1].trim());
-    const street = normalizeStreetSuffix(m[2].trim());
-    return `Take 5 - ${city} - ${street}`;
-  }
+  let m;
 
-  m = t.match(/take 5\s+on\s+(.+?)\s+in\s+(.+)$/i);
+  // site in city on street
+  m = t.match(/^(.+?)\s+in\s+(.+?)\s+on\s+(.+)$/i);
   if(m){
-    const street = normalizeStreetSuffix(m[1].trim());
+    const site = normalizeSiteName(m[1]);
     const city = titleCaseWords(m[2].trim());
-    return `Take 5 - ${city} - ${street}`;
+    const street = normalizeStreetSuffix(m[3].trim());
+    return `${site} - ${city} - ${street}`;
   }
 
-  if(t.includes("take 5")){
-    return titleCaseWords(t).replace("Take 5", "Take 5");
+  // site on street in city
+  m = t.match(/^(.+?)\s+on\s+(.+?)\s+in\s+(.+)$/i);
+  if(m){
+    const site = normalizeSiteName(m[1]);
+    const street = normalizeStreetSuffix(m[2].trim());
+    const city = titleCaseWords(m[3].trim());
+    return `${site} - ${city} - ${street}`;
   }
 
-  return titleCaseWords(t);
+  return normalizeSiteName(t);
 }
 
 /* ---------- equipment parsing ---------- */
@@ -442,11 +459,9 @@ function normalizeServiceEquipment(raw){
   let t = (raw || "").trim();
   if(!t) return "";
 
-  // Try standard equipment parser first
   const parsed = expandEquipmentCounts(t);
   if(parsed) return parsed;
 
-  // Otherwise just uppercase and clean punctuation for stuff like thermostat
   return t
     .replace(/\s+and\s+/gi, ", ")
     .split(/[,;]+/)
@@ -514,9 +529,12 @@ function parsePartItem(item){
   t = t.replace(/\bbuy\b/g, "by");
   t = convertNumbers(t);
   t = t.replace(/\s{2,}/g, " ").trim();
+
+  // filler words gone
   t = t.replace(/\bfilters?\b/g, "").trim();
   t = t.replace(/\bbelts?\b/g, "").trim();
 
+  // BELTS
   let beltMatch = t.match(/^(\d+)\s+(ax|bx|a|b|4l)\s*-?\s*(\d+)$/i);
   if(beltMatch){
     const qty = parseInt(beltMatch[1], 10);
@@ -538,6 +556,7 @@ function parsePartItem(item){
     return [formatPartOutput(qty, code)];
   }
 
+  // FILTERS
   let f = t;
   f = f.replace(/\s+by\s+/g, " x ");
   f = f.replace(/\s*x\s*/g, " x ");
@@ -766,7 +785,6 @@ function saveDraft(){
 function loadDraft(){
   const raw = localStorage.getItem(DRAFT_KEY);
   if(!raw) return false;
-
   try{
     const d = JSON.parse(raw);
     setFields(d);
@@ -787,7 +805,7 @@ function formatLocationField(){
   const el = document.getElementById("location");
   const current = el.value;
   if(current.trim()){
-    el.value = formatTake5Location(current);
+    el.value = formatLocation(current);
     saveDraft();
   }
 }
@@ -874,7 +892,7 @@ document.getElementById("modeService").onclick = function(){
   saveDraft();
 };
 
-/* ---------- UI actions ---------- */
+/* ---------- ui actions ---------- */
 document.getElementById("same").onclick = function(){
   document.getElementById("next").value = document.getElementById("used").value;
   autoGrow(document.getElementById("next"));
@@ -883,8 +901,7 @@ document.getElementById("same").onclick = function(){
 
 document.getElementById("generate").onclick = function(){
   formatLocationField();
-
-  const location = formatTake5Location(document.getElementById("location").value || "[Location]") || "[Location]";
+  const location = formatLocation(document.getElementById("location").value || "[Location]") || "[Location]";
   const date = today();
 
   let report = "";
@@ -1067,7 +1084,10 @@ document.getElementById("addMUA").onclick = () => addEquipmentCode("MUA");
 
 function addEnterFormatter(id, formatter){
   document.getElementById(id).addEventListener("keydown", (e) => {
-    if(e.key === "Enter" && id !== "notes" && id !== "reason" && id !== "diagnosis" && id !== "repairsMade" && id !== "recommendations"){
+    if(
+      e.key === "Enter" &&
+      !["notes","reason","diagnosis","repairsMade","recommendations"].includes(id)
+    ){
       e.preventDefault();
       formatter();
       e.target.blur();

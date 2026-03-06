@@ -144,7 +144,7 @@ function today(){
 
 const DEFAULT_WORKDONE = "Changed filters/belts and verified operations of equipment";
 const DEFAULT_NOTES = "All units are running good at this time.";
-const DRAFT_KEY = "pm_tool_draft_v8";
+const DRAFT_KEY = "pm_tool_draft_v9";
 
 const KNOWN_FILTER_SIZES = [
   "16x16x2","16x20x2","16x24x2","16x25x2","18x20x2","18x24x2","18x25x2",
@@ -268,7 +268,6 @@ function formatTake5Location(raw){
 
   let m;
 
-  // take 5 in oak creek on main street
   m = t.match(/take 5(?:\s+in)?\s+(.+?)\s+on\s+(.+)$/i);
   if(m){
     const city = titleCaseWords(m[1].trim());
@@ -276,7 +275,6 @@ function formatTake5Location(raw){
     return `Take 5 - ${city} - ${street}`;
   }
 
-  // take 5 on main street in oak creek
   m = t.match(/take 5\s+on\s+(.+?)\s+in\s+(.+)$/i);
   if(m){
     const street = normalizeStreetSuffix(m[1].trim());
@@ -301,7 +299,6 @@ function normalizeEquipmentSpeech(text){
   t = t.replace(/\s+and\s+/g, ", ");
   t = t.replace(/\s{2,}/g, " ").trim();
 
-  // RTU dictation junk
   t = t.replace(/\bare\s*to\s*you\b/g, "rtu");
   t = t.replace(/\bar\s*to\s*you\b/g, "rtu");
   t = t.replace(/\br\s*to\s*you\b/g, "rtu");
@@ -360,7 +357,7 @@ function expandEquipmentCounts(text){
     if(!unique.includes(x)) unique.push(x);
   });
 
-  return unique.join(",");
+  return unique.join(", ");
 }
 
 function parseEquipCodes(codeCsv){
@@ -381,6 +378,11 @@ function expandEquipment(codeCsv){
 
 function firstUnitOfType(codes, type){
   return codes.find(c => c.startsWith(type)) || null;
+}
+
+function formatEquipmentFieldValue(raw){
+  const codes = expandEquipmentCounts(raw);
+  return codes || raw;
 }
 
 /* ---------- parts ---------- */
@@ -496,7 +498,7 @@ function normalizeParts(text){
   return out.join(", ");
 }
 
-/* ---------- notes / repairs ---------- */
+/* ---------- notes ---------- */
 
 function normalizeNotesForParsing(text){
   let t = (text || "").trim().toLowerCase();
@@ -504,7 +506,6 @@ function normalizeNotesForParsing(text){
   t = t.replace(/\n/g, " ");
   t = t.replace(/\s{2,}/g, " ").trim();
 
-  // RTU dictation junk
   t = t.replace(/\bare\s*to\s*you\b/g,"rtu");
   t = t.replace(/\bar\s*to\s*you\b/g,"rtu");
   t = t.replace(/\br\s*to\s*you\b/g,"rtu");
@@ -516,7 +517,6 @@ function normalizeNotesForParsing(text){
   t = t.replace(/\brt\b/g,"rtu");
   t = t.replace(/\bhour\s*to\s*you\b/g,"rtu");
 
-  // other equipment names
   t = t.replace(/\bfurnaces?\b/g,"furnace");
   t = t.replace(/\bunit heaters?\b/g,"unit heater");
   t = t.replace(/\bradiant heaters?\b/g,"radiant heater");
@@ -526,7 +526,6 @@ function normalizeNotesForParsing(text){
 
   t = convertNumbers(t);
 
-  // rtu 1 -> RTU1
   t = t.replace(/\b(rtu|rh|uh|f|ef|mua)\s*(\d+)\b/gi, (_, a, n) => `${a.toUpperCase()}${n}`);
 
   return t;
@@ -539,7 +538,7 @@ function extractRepairsFromNotes(notesText, equipCodes){
   const pieces = text
     .replace(/\r/g,"")
     .split(/\n+|(?<=[.?!])\s+/)
-    .map(s=>s.trim())
+    .map(s => s.trim())
     .filter(Boolean);
 
   const repairs = [];
@@ -568,6 +567,7 @@ function extractRepairsFromNotes(notesText, equipCodes){
       msg = msg.replace(/^(rtu|rt|furnace|unit heater|radiant heater|exhaust fan|make[\s-]?up air|mua|ef|rh|uh|f)\s*-?\s*(one|two|three|four|five|six|seven|eight|nine|ten|\d+)?\s*/i, "");
       msg = msg.replace(/^\s*[:\-–]\s*/, "");
       if(!msg) msg = "Repair needed.";
+
       repairs.push(`${unit} – ${msg}`);
     } else {
       general.push(piece);
@@ -635,22 +635,64 @@ function loadDraft(){
   }
 }
 
+/* ---------- immediate field formatting ---------- */
+
+function formatLocationField(){
+  const el = document.getElementById("location");
+  const current = el.value;
+  if(current.trim()){
+    el.value = formatTake5Location(current);
+    saveDraft();
+  }
+}
+
+function formatEquipmentField(){
+  const el = document.getElementById("equipment");
+  const current = el.value;
+  if(current.trim()){
+    el.value = formatEquipmentFieldValue(current);
+    saveDraft();
+  }
+}
+
+function formatUsedField(){
+  const el = document.getElementById("used");
+  const current = el.value;
+  if(current.trim()){
+    el.value = normalizeParts(current);
+    saveDraft();
+  }
+}
+
+function formatNextField(){
+  const el = document.getElementById("next");
+  const current = el.value;
+  if(current.trim()){
+    el.value = normalizeParts(current);
+    saveDraft();
+  }
+}
+
 /* ---------- ui ---------- */
 
 document.getElementById("same").onclick = function(){
   document.getElementById("next").value = document.getElementById("used").value;
-  saveDraft();
+  formatNextField();
 };
 
 document.getElementById("generate").onclick = function(){
+  formatLocationField();
+  formatEquipmentField();
+  formatUsedField();
+  formatNextField();
+
   const rawLocation = document.getElementById("location").value || "[Location]";
   const location = formatTake5Location(rawLocation) || rawLocation;
   const date = document.getElementById("date").value || today();
 
   const equipRaw = document.getElementById("equipment").value || "";
-  const equipCodesCsv = expandEquipmentCounts(equipRaw);
-  const equipCodes = parseEquipCodes(equipCodesCsv);
-  const equip = expandEquipment(equipCodesCsv);
+  const equipCodes = parseEquipCodes(equipRaw);
+  const equip = expandEquipment(equipRaw);
 
   const notesRaw = (document.getElementById("notes").value || "").trim();
   const extracted = extractRepairsFromNotes(notesRaw, equipCodes);
@@ -664,10 +706,10 @@ document.getElementById("generate").onclick = function(){
   }
 
   const usedRaw = document.getElementById("used").value || "";
-  const used = usedRaw ? (normalizeParts(usedRaw) || usedRaw) : "None";
+  const used = usedRaw ? usedRaw : "None";
 
   const nextRaw = document.getElementById("next").value || "";
-  const next = nextRaw ? (normalizeParts(nextRaw) || nextRaw) : "None";
+  const next = nextRaw ? nextRaw : "None";
 
   const cost = document.getElementById("cost").value || "Unknown";
   const workdone = document.getElementById("workdone").value || DEFAULT_WORKDONE;
@@ -730,7 +772,7 @@ document.getElementById("clear").onclick = function(){
 
 function addEquipmentCode(prefix){
   const current = (document.getElementById("equipment").value || "").trim();
-  const codes = parseEquipCodes(expandEquipmentCounts(current));
+  const codes = parseEquipCodes(current);
   let max = 0;
 
   codes.forEach(c => {
@@ -751,64 +793,25 @@ document.getElementById("addRH").onclick = () => addEquipmentCode("RH");
 document.getElementById("addEF").onclick = () => addEquipmentCode("EF");
 document.getElementById("addMUA").onclick = () => addEquipmentCode("MUA");
 
+function addEnterFormatter(id, formatter){
+  document.getElementById(id).addEventListener("keydown", (e) => {
+    if(e.key === "Enter"){
+      e.preventDefault();
+      formatter();
+      e.target.blur();
+    }
+  });
+}
+
 function wireAutosave(){
   ["location","date","equipment","notes","used","cost","next","workdone"].forEach(id => {
     document.getElementById(id).addEventListener("input", saveDraft);
   });
 
-  function formatLocationField(){
-    const el = document.getElementById("location");
-    const current = el.value;
-    if(current.trim()){
-      el.value = formatTake5Location(current);
-      saveDraft();
-    }
-  }
-
-  function formatEquipmentField(){
-    const el = document.getElementById("equipment");
-    const current = el.value;
-    if(current.trim()){
-      const formatted = expandEquipment(expandEquipmentCounts(current));
-      el.value = formatted.replace(/\n/g, ", ");
-      saveDraft();
-    }
-  }
-
-  function formatUsedField(){
-    const el = document.getElementById("used");
-    const current = el.value;
-    if(current.trim()){
-      el.value = normalizeParts(current);
-      saveDraft();
-    }
-  }
-
-  function formatNextField(){
-    const el = document.getElementById("next");
-    const current = el.value;
-    if(current.trim()){
-      el.value = normalizeParts(current);
-      saveDraft();
-    }
-  }
-
-  // blur formatting
   document.getElementById("location").addEventListener("blur", formatLocationField);
   document.getElementById("equipment").addEventListener("blur", formatEquipmentField);
   document.getElementById("used").addEventListener("blur", formatUsedField);
   document.getElementById("next").addEventListener("blur", formatNextField);
-
-  // Enter key formatting
-  function addEnterFormatter(id, formatter){
-    document.getElementById(id).addEventListener("keydown", (e) => {
-      if(e.key === "Enter"){
-        e.preventDefault();
-        formatter();
-        e.target.blur();
-      }
-    });
-  }
 
   addEnterFormatter("location", formatLocationField);
   addEnterFormatter("equipment", formatEquipmentField);
@@ -821,7 +824,18 @@ function wireAutosave(){
 
   window.addEventListener("pagehide", saveDraft);
 }
+
+(function init(){
+  document.getElementById("date").value = today();
+  document.getElementById("workdone").value = DEFAULT_WORKDONE;
+
+  const restored = loadDraft();
+  if(!restored){
+    document.getElementById("draftStatus").textContent = "No saved draft yet.";
+  }
+
+  wireAutosave();
+})();
 </script>
 </body>
 </html>
-

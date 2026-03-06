@@ -29,7 +29,9 @@ pre{background:#f5f5f5;padding:14px;white-space:pre-wrap;border-radius:8px;borde
 <div class="small" id="draftStatus"></div>
 
 <label>Location</label>
-<input id="location" placeholder="Take five – Waukesha – Moreland Avenue">
+<input id="location" placeholder="Example: im at the take 5 in wauwatosa on monroe avenue">
+
+<button id="fixLocation" type="button">Format Location</button>
 
 <label>Date</label>
 <input id="date">
@@ -74,7 +76,6 @@ pre{background:#f5f5f5;padding:14px;white-space:pre-wrap;border-radius:8px;borde
 </div>
 
 <script>
-/* ---------------- basic helpers ---------------- */
 function pad2(n){ return String(n).padStart(2,"0"); }
 function today(){
   const d=new Date();
@@ -83,27 +84,12 @@ function today(){
 
 const DEFAULT_WORKDONE="Changed filters/belts and verified operations of equipment";
 const DEFAULT_NOTES="All units are running good at this time.";
-const DRAFT_KEY="pm_tool_draft_v4";
+const DRAFT_KEY="pm_tool_draft_v5";
 
-/* ---------------- common part lists ---------------- */
 const KNOWN_FILTER_SIZES = [
-  "16x16x2",
-  "16x20x2",
-  "16x24x2",
-  "16x25x2",
-  "18x20x2",
-  "18x24x2",
-  "18x25x2",
-  "20x20x2",
-  "20x24x2",
-  "20x25x2",
-  "20x30x2",
-  "20x35x2",
-  "24x24x1",
-  "24x24x2",
-  "24x24x4",
-  "14x20x1",
-  "16x25x1"
+  "16x16x2","16x20x2","16x24x2","16x25x2","18x20x2","18x24x2","18x25x2",
+  "20x20x2","20x24x2","20x25x2","20x30x2","20x35x2","24x24x1","24x24x2","24x24x4",
+  "14x20x1","16x25x1"
 ];
 
 const KNOWN_BELTS = [
@@ -114,13 +100,11 @@ const KNOWN_BELTS = [
   "B38","B42","B44","B46","B49","B54","B56","B57","B61","B62","B64","B65","B66","B68","B75","B81","B96"
 ];
 
-/* ---------------- number words ---------------- */
 const numMap = {
   zero:"0",
   one:"1", two:"2", three:"3", four:"4", five:"5",
   six:"6", seven:"7", eight:"8", nine:"9", ten:"10",
   ones:"1", twos:"2", threes:"3", fours:"4", fives:"5",
-  // common dictation junk
   to:"2", too:"2"
 };
 
@@ -133,7 +117,6 @@ function convertNumbers(text){
   return t;
 }
 
-/* ---------------- distance helpers for fuzzy matching ---------------- */
 function levenshtein(a,b){
   const m=a.length, n=b.length;
   const dp=Array.from({length:m+1},()=>Array(n+1).fill(0));
@@ -142,18 +125,14 @@ function levenshtein(a,b){
   for(let i=1;i<=m;i++){
     for(let j=1;j<=n;j++){
       const cost = a[i-1]===b[j-1] ? 0 : 1;
-      dp[i][j]=Math.min(
-        dp[i-1][j]+1,
-        dp[i][j-1]+1,
-        dp[i-1][j-1]+cost
-      );
+      dp[i][j]=Math.min(dp[i-1][j]+1, dp[i][j-1]+1, dp[i-1][j-1]+cost);
     }
   }
   return dp[m][n];
 }
 
 function closestMatch(value, list, maxDistance){
-  let best = null;
+  let best = value;
   let bestScore = Infinity;
   list.forEach(item=>{
     const d = levenshtein(value.toUpperCase(), item.toUpperCase());
@@ -165,7 +144,86 @@ function closestMatch(value, list, maxDistance){
   return bestScore <= maxDistance ? best : value;
 }
 
-/* ---------------- equipment parsing ---------------- */
+/* ---------- location normalizer ---------- */
+function titleCaseWords(str){
+  return str
+    .split(" ")
+    .filter(Boolean)
+    .map(w=>{
+      if(/^\d/.test(w)) return w;
+      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    })
+    .join(" ");
+}
+
+function normalizeStreetSuffix(street){
+  let s = street.trim().toLowerCase();
+
+  s = s.replace(/\bavenue\b/g, "Ave.");
+  s = s.replace(/\bstreet\b/g, "St.");
+  s = s.replace(/\broad\b/g, "Rd.");
+  s = s.replace(/\bdrive\b/g, "Dr.");
+  s = s.replace(/\bboulevard\b/g, "Blvd.");
+  s = s.replace(/\blane\b/g, "Ln.");
+  s = s.replace(/\bcourt\b/g, "Ct.");
+  s = s.replace(/\bplace\b/g, "Pl.");
+  s = s.replace(/\bhighway\b/g, "Hwy.");
+
+  s = titleCaseWords(s);
+
+  // preserve Ave./St./Rd. casing
+  s = s.replace(/\bAve\.\b/g, "Ave.");
+  s = s.replace(/\bSt\.\b/g, "St.");
+  s = s.replace(/\bRd\.\b/g, "Rd.");
+  s = s.replace(/\bDr\.\b/g, "Dr.");
+  s = s.replace(/\bBlvd\.\b/g, "Blvd.");
+  s = s.replace(/\bLn\.\b/g, "Ln.");
+  s = s.replace(/\bCt\.\b/g, "Ct.");
+  s = s.replace(/\bPl\.\b/g, "Pl.");
+  s = s.replace(/\bHwy\.\b/g, "Hwy.");
+
+  return s;
+}
+
+function formatTake5Location(raw){
+  let t = (raw || "").trim().toLowerCase();
+  if(!t) return "";
+
+  t = t.replace(/[.,]/g, " ");
+  t = t.replace(/\bi am at\b/g, "");
+  t = t.replace(/\bim at\b/g, "");
+  t = t.replace(/\bi'm at\b/g, "");
+  t = t.replace(/\bwe are at\b/g, "");
+  t = t.replace(/\bthe\b/g, "");
+  t = t.replace(/\s{2,}/g, " ").trim();
+
+  t = t.replace(/\btake five\b/g, "take 5");
+
+  // main pattern: take 5 in wauwatosa on monroe avenue
+  let m = t.match(/take 5(?:\s+in)?\s+(.+?)\s+on\s+(.+)$/i);
+  if(m){
+    const city = titleCaseWords(m[1].trim());
+    const street = normalizeStreetSuffix(m[2].trim());
+    return `Take 5 - ${city} - ${street}`;
+  }
+
+  // fallback pattern: take 5 wauwatosa monroe avenue
+  m = t.match(/take 5\s+([a-z0-9\s]+?)\s+([0-9a-z\s]+(?:avenue|street|road|drive|boulevard|lane|court|place|highway))$/i);
+  if(m){
+    const city = titleCaseWords(m[1].trim());
+    const street = normalizeStreetSuffix(m[2].trim());
+    return `Take 5 - ${city} - ${street}`;
+  }
+
+  // if they already gave a cleaner version
+  if(t.includes("take 5")){
+    return titleCaseWords(t).replace("Take 5", "Take 5");
+  }
+
+  return titleCaseWords(t);
+}
+
+/* ---------- equipment parsing ---------- */
 const EQUIP_LABELS = {
   RTU:"Rooftop Unit",
   F:"Furnace",
@@ -183,7 +241,6 @@ function normalizeEquipmentSpeech(text){
   t = t.replace(/\s+and\s+/g,", ");
   t = t.replace(/\s{2,}/g," ").trim();
 
-  // heavy cleanup for RTU dictation junk
   t = t.replace(/\bare\s*to\s*you\b/g,"rtu");
   t = t.replace(/\bar\s*to\s*you\b/g,"rtu");
   t = t.replace(/\br\s*to\s*you\b/g,"rtu");
@@ -194,7 +251,6 @@ function normalizeEquipmentSpeech(text){
   t = t.replace(/\brt\s*u\b/g,"rtu");
   t = t.replace(/\brt\b/g,"rtu");
 
-  // other equipment speech
   t = t.replace(/\bfurnaces?\b/g,"furnace");
   t = t.replace(/\bunit heaters?\b/g,"unit heater");
   t = t.replace(/\bradiant heaters?\b/g,"radiant heater");
@@ -231,13 +287,11 @@ function expandEquipmentCounts(text){
     }
   });
 
-  // also allow direct codes like RTU2, RH1, etc.
   const directMatches = [...t.matchAll(/\b(RTU|RH|UH|F|EF|MUA)\s*-?\s*(\d+)\b/gi)];
   directMatches.forEach(m=>{
     out.push(m[1].toUpperCase() + m[2]);
   });
 
-  // remove duplicates preserving order
   const unique = [];
   out.forEach(x=>{
     if(!unique.includes(x)) unique.push(x);
@@ -265,7 +319,7 @@ function firstUnitOfType(codes, type){
   return codes.find(c=>c.startsWith(type)) || null;
 }
 
-/* ---------------- parts parsing ---------------- */
+/* ---------- parts parsing ---------- */
 function normalizeFilterSize(rawSize){
   let s = rawSize.toLowerCase().trim();
   s = s.replace(/\bbuy\b/g,"by");
@@ -274,14 +328,10 @@ function normalizeFilterSize(rawSize){
   s = s.replace(/\s*x\s*/g,"x");
   s = s.replace(/\s+/g,"");
   s = s.replace(/[^0-9x]/g,"");
-
-  // 16 25 1 style shouldn't happen here, but guard anyway
   const nums = s.split("x").filter(Boolean);
   if(nums.length === 3){
     s = `${nums[0]}x${nums[1]}x${nums[2]}`;
   }
-
-  // snap to known list if close
   return closestMatch(s.toUpperCase(), KNOWN_FILTER_SIZES.map(x=>x.toUpperCase()), 2);
 }
 
@@ -289,14 +339,11 @@ function normalizeBeltCode(rawCode){
   let s = rawCode.toUpperCase().trim();
   s = s.replace(/\s+/g,"");
   s = s.replace(/[-_]/g,"");
-
-  // AX 35 / A 35 / BX42 / 4L190
   const m = s.match(/^(AX|BX|A|B|4L)(\d+)$/);
   if(m){
     const code = m[1] + m[2];
     return closestMatch(code, KNOWN_BELTS, 1);
   }
-
   return closestMatch(s, KNOWN_BELTS, 1);
 }
 
@@ -308,11 +355,6 @@ function parsePartItem(item){
   t = convertNumbers(t);
   t = t.replace(/\s{2,}/g," ").trim();
 
-  // BELT examples:
-  // 1 ax 35 belt
-  // 1 ax35 belt
-  // 1 a35 belt
-  // 1 bx 42
   let beltMatch = t.match(/^(\d+)\s+(ax|bx|a|b|4l)\s*-?\s*(\d+)\s*(belt|belts)?$/i);
   if(beltMatch){
     const qty = beltMatch[1];
@@ -320,7 +362,6 @@ function parsePartItem(item){
     return [`${qty} – ${code} belt`];
   }
 
-  // glued count + belt like 1ax35 belt
   beltMatch = t.match(/^(\d+)(ax|bx|a|b|4l)\s*-?\s*(\d+)\s*(belt|belts)?$/i);
   if(beltMatch){
     const qty = beltMatch[1];
@@ -328,22 +369,13 @@ function parsePartItem(item){
     return [`${qty} – ${code} belt`];
   }
 
-  // FILTER examples:
-  // one 16 by 25 by one
-  // 1 16 x 25 x 1
-  // 1x16x25x1
-  // 4x16x16 x 2
-  // 2 20 25 x 2
-
   let filterText = t;
-
   filterText = filterText.replace(/\bbuy\b/g,"by");
   filterText = filterText.replace(/\s+by\s+/g," x ");
   filterText = filterText.replace(/\s*x\s*/g," x ");
   filterText = filterText.replace(/\b(filters?|filter|pleated)\b/g,"");
   filterText = filterText.replace(/\s{2,}/g," ").trim();
 
-  // 4x16x16x2 => count glued to size
   let m = filterText.match(/^(\d+)x(\d+)x(\d+)x(\d+)$/i);
   if(m){
     const qty = m[1];
@@ -351,7 +383,6 @@ function parsePartItem(item){
     return [`${qty} – ${size}`];
   }
 
-  // 1 16x25x1
   m = filterText.match(/^(\d+)\s+(\d+)\s*x\s*(\d+)\s*x\s*(\d+)$/i);
   if(m){
     const qty = m[1];
@@ -359,7 +390,6 @@ function parsePartItem(item){
     return [`${qty} – ${size}`];
   }
 
-  // 1 16 25 x 1
   m = filterText.match(/^(\d+)\s+(\d+)\s+(\d+)\s*x\s*(\d+)$/i);
   if(m){
     const qty = m[1];
@@ -367,7 +397,6 @@ function parsePartItem(item){
     return [`${qty} – ${size}`];
   }
 
-  // last chance: count + raw size words
   m = filterText.match(/^(\d+)\s+(.+)$/i);
   if(m){
     const qty = m[1];
@@ -398,7 +427,7 @@ function normalizeParts(text){
   return out.join(", ");
 }
 
-/* ---------------- notes to recommended repairs ---------------- */
+/* ---------- notes to recommended repairs ---------- */
 function normalizeNotesForParsing(text){
   let t = (text || "").trim();
   t = normalizeEquipmentSpeech(t);
@@ -427,11 +456,9 @@ function extractRepairsFromNotes(notesText, equipCodes){
     const norm = normalizeNotesForParsing(piece);
     let unit = null;
 
-    // explicit units first
     const explicit = norm.match(/\b(RTU|RH|UH|F|EF|MUA)\d+\b/i);
     if(explicit) unit = explicit[0].toUpperCase();
 
-    // inferred units if only type is spoken
     if(!unit && /\brtu\b/i.test(norm)) unit = firstUnitOfType(equipCodes,"RTU");
     if(!unit && /\bfurnace\b|\bf\b/i.test(norm)) unit = firstUnitOfType(equipCodes,"F");
     if(!unit && /\bunit heater\b|\buh\b/i.test(norm)) unit = firstUnitOfType(equipCodes,"UH");
@@ -456,7 +483,7 @@ function extractRepairsFromNotes(notesText, equipCodes){
   };
 }
 
-/* ---------------- draft save/restore ---------------- */
+/* ---------- draft save/restore ---------- */
 function getFields(){
   return {
     location: document.getElementById("location").value || "",
@@ -509,14 +536,21 @@ function loadDraft(){
   }
 }
 
-/* ---------------- ui actions ---------------- */
+/* ---------- ui actions ---------- */
+document.getElementById("fixLocation").onclick = function(){
+  const current = document.getElementById("location").value;
+  document.getElementById("location").value = formatTake5Location(current);
+  saveDraft();
+};
+
 document.getElementById("same").onclick = function(){
   document.getElementById("next").value = document.getElementById("used").value;
   saveDraft();
 };
 
 document.getElementById("generate").onclick = function(){
-  const location = document.getElementById("location").value || "[Location]";
+  const rawLocation = document.getElementById("location").value || "[Location]";
+  const location = formatTake5Location(rawLocation) || rawLocation;
   const date = document.getElementById("date").value || today();
 
   const equipRaw = document.getElementById("equipment").value || "";
@@ -623,7 +657,7 @@ document.getElementById("addRH").onclick = ()=>addEquipmentCode("RH");
 document.getElementById("addEF").onclick = ()=>addEquipmentCode("EF");
 document.getElementById("addMUA").onclick = ()=>addEquipmentCode("MUA");
 
-/* ---------------- autosave wiring ---------------- */
+/* ---------- autosave ---------- */
 function wireAutosave(){
   ["location","date","equipment","notes","used","cost","next","workdone"].forEach(id=>{
     document.getElementById(id).addEventListener("input", saveDraft);
@@ -636,7 +670,7 @@ function wireAutosave(){
   window.addEventListener("pagehide", saveDraft);
 }
 
-/* ---------------- init ---------------- */
+/* ---------- init ---------- */
 (function init(){
   document.getElementById("date").value = today();
   document.getElementById("workdone").value = DEFAULT_WORKDONE;

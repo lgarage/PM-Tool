@@ -174,6 +174,12 @@ pre{
   <label>Cost of parts</label>
   <input id="serviceCost" placeholder="Example: $23">
 
+  <label>Parts needed for repair quote</label>
+  <textarea id="quoteParts" placeholder="Example: 1 GAS VALVE and 1 IGNITER"></textarea>
+
+  <label>Labor for repair quote</label>
+  <input id="quoteLabor" placeholder="Example: 3 HOURS">
+
   <label>Recommendations / Next steps</label>
   <textarea id="recommendations" placeholder="Example: Replace RTU1 due to cracked heat exchanger."></textarea>
 </div>
@@ -200,13 +206,13 @@ function today(){
 
 const DEFAULT_PM_WORKDONE = "Changed filters/belts and verified operations of equipment";
 const DEFAULT_PM_NOTES = "All units are running good at this time.";
-const DRAFT_KEY = "hvac_note_tool_v14";
+const DRAFT_KEY = "hvac_note_tool_v15";
 
 const KNOWN_FILTER_SIZES = [
-  "14X20X1","16x16x1","16x20x1","18x20x1","18x20x1","18x24x1","18x25x1","20x20x1","20x24x1","20x25x1","20x30x1",
-  "14x20x2","16X16X2","16X20X2","16X24X2","16X25X1","16X25X2",
+  "14X20X1",
+  "16X16X2","16X20X2","16X24X2","16X25X1","16X25X2",
   "18X20X2","18X24X2","18X25X2",
-  "20X20X2","20X24X2","20X25X2","20X30X2","20X35X2",
+  "20X20X1","20X20X2","20X24X1","20X24X2","20X25X1","20X25X2","20X30X2","20X35X2",
   "24X24X1","24X24X2","24X24X4"
 ];
 
@@ -341,7 +347,6 @@ function formatLocation(raw){
 
   let m;
 
-  // site in city on street
   m = t.match(/^(.+?)\s+in\s+(.+?)\s+on\s+(.+)$/i);
   if(m){
     const site = normalizeSiteName(m[1]);
@@ -350,13 +355,19 @@ function formatLocation(raw){
     return `${site} - ${city} - ${street}`;
   }
 
-  // site on street in city
   m = t.match(/^(.+?)\s+on\s+(.+?)\s+in\s+(.+)$/i);
   if(m){
     const site = normalizeSiteName(m[1]);
     const street = normalizeStreetSuffix(m[2].trim());
     const city = titleCaseWords(m[3].trim());
     return `${site} - ${city} - ${street}`;
+  }
+
+  m = t.match(/^(.+?)\s+in\s+(.+)$/i);
+  if(m){
+    const site = normalizeSiteName(m[1]);
+    const city = titleCaseWords(m[2].trim());
+    return `${site} - ${city}`;
   }
 
   return normalizeSiteName(t);
@@ -529,12 +540,9 @@ function parsePartItem(item){
   t = t.replace(/\bbuy\b/g, "by");
   t = convertNumbers(t);
   t = t.replace(/\s{2,}/g, " ").trim();
-
-  // filler words gone
   t = t.replace(/\bfilters?\b/g, "").trim();
   t = t.replace(/\bbelts?\b/g, "").trim();
 
-  // BELTS
   let beltMatch = t.match(/^(\d+)\s+(ax|bx|a|b|4l)\s*-?\s*(\d+)$/i);
   if(beltMatch){
     const qty = parseInt(beltMatch[1], 10);
@@ -556,7 +564,6 @@ function parsePartItem(item){
     return [formatPartOutput(qty, code)];
   }
 
-  // FILTERS
   let f = t;
   f = f.replace(/\s+by\s+/g, " x ");
   f = f.replace(/\s*x\s*/g, " x ");
@@ -740,6 +747,8 @@ function getFields(){
     repairsMade: document.getElementById("repairsMade").value || "",
     serviceUsed: document.getElementById("serviceUsed").value || "",
     serviceCost: document.getElementById("serviceCost").value || "",
+    quoteParts: document.getElementById("quoteParts").value || "",
+    quoteLabor: document.getElementById("quoteLabor").value || "",
     recommendations: document.getElementById("recommendations").value || "",
 
     output: document.getElementById("output").textContent || "",
@@ -766,11 +775,16 @@ function setFields(d){
   document.getElementById("repairsMade").value = d.repairsMade || "";
   document.getElementById("serviceUsed").value = d.serviceUsed || "";
   document.getElementById("serviceCost").value = d.serviceCost || "";
+  document.getElementById("quoteParts").value = d.quoteParts || "";
+  document.getElementById("quoteLabor").value = d.quoteLabor || "";
   document.getElementById("recommendations").value = d.recommendations || "";
 
   document.getElementById("output").textContent = d.output || "";
 
-  ["equipment","notes","used","next","serviceEquipment","reason","diagnosis","repairsMade","serviceUsed","recommendations"].forEach(id => {
+  [
+    "equipment","notes","used","next",
+    "serviceEquipment","reason","diagnosis","repairsMade","serviceUsed","quoteParts","recommendations"
+  ].forEach(id => {
     autoGrow(document.getElementById(id));
   });
 }
@@ -852,6 +866,16 @@ function formatServiceEquipmentField(){
 
 function formatServiceUsedField(){
   const el = document.getElementById("serviceUsed");
+  const current = el.value;
+  if(current.trim()){
+    el.value = normalizeParts(current);
+    autoGrow(el);
+    saveDraft();
+  }
+}
+
+function formatQuotePartsField(){
+  const el = document.getElementById("quoteParts");
   const current = el.value;
   if(current.trim()){
     el.value = normalizeParts(current);
@@ -962,6 +986,7 @@ Nameplate photos attached.
   } else {
     formatServiceEquipmentField();
     formatServiceUsedField();
+    formatQuotePartsField();
 
     const serviceEquipRaw = document.getElementById("serviceEquipment").value || "";
     const serviceEquipDisplay = parseEquipCodes(serviceEquipRaw).length
@@ -973,6 +998,8 @@ Nameplate photos attached.
     const repairsMade = document.getElementById("repairsMade").value.trim() || "None.";
     const used = document.getElementById("serviceUsed").value.trim() ? normalizeParts(document.getElementById("serviceUsed").value) : "NONE";
     const cost = document.getElementById("serviceCost").value || "Unknown";
+    const quoteParts = document.getElementById("quoteParts").value.trim() ? normalizeParts(document.getElementById("quoteParts").value) : "NONE";
+    const quoteLabor = document.getElementById("quoteLabor").value.trim() || "NONE";
     const recommendations = document.getElementById("recommendations").value.trim() || "None.";
 
     report = `SERVICE CALL
@@ -1000,6 +1027,12 @@ ${used}
 
 Cost of parts (if known):
 ${cost}
+
+Parts needed for repair quote:
+${quoteParts}
+
+Labor for repair quote:
+${quoteLabor}
 
 Recommendations / Next steps:
 ${recommendations}
@@ -1044,6 +1077,8 @@ document.getElementById("clear").onclick = function(){
     document.getElementById("repairsMade").value = "";
     document.getElementById("serviceUsed").value = "";
     document.getElementById("serviceCost").value = "";
+    document.getElementById("quoteParts").value = "";
+    document.getElementById("quoteLabor").value = "";
     document.getElementById("recommendations").value = "";
 
     autoGrow(document.getElementById("serviceEquipment"));
@@ -1051,6 +1086,7 @@ document.getElementById("clear").onclick = function(){
     autoGrow(document.getElementById("diagnosis"));
     autoGrow(document.getElementById("repairsMade"));
     autoGrow(document.getElementById("serviceUsed"));
+    autoGrow(document.getElementById("quoteParts"));
     autoGrow(document.getElementById("recommendations"));
   }
 
@@ -1098,7 +1134,7 @@ function addEnterFormatter(id, formatter){
 function wireAutosave(){
   [
     "location","equipment","notes","used","cost","next","workdone",
-    "serviceEquipment","reason","diagnosis","repairsMade","serviceUsed","serviceCost","recommendations"
+    "serviceEquipment","reason","diagnosis","repairsMade","serviceUsed","serviceCost","quoteParts","quoteLabor","recommendations"
   ].forEach(id => {
     const el = document.getElementById(id);
     el.addEventListener("input", () => {
@@ -1115,6 +1151,7 @@ function wireAutosave(){
   document.getElementById("next").addEventListener("blur", formatNextField);
   document.getElementById("serviceEquipment").addEventListener("blur", formatServiceEquipmentField);
   document.getElementById("serviceUsed").addEventListener("blur", formatServiceUsedField);
+  document.getElementById("quoteParts").addEventListener("blur", formatQuotePartsField);
 
   addEnterFormatter("location", formatLocationField);
   addEnterFormatter("equipment", formatEquipmentField);
@@ -1122,6 +1159,7 @@ function wireAutosave(){
   addEnterFormatter("next", formatNextField);
   addEnterFormatter("serviceEquipment", formatServiceEquipmentField);
   addEnterFormatter("serviceUsed", formatServiceUsedField);
+  addEnterFormatter("quoteParts", formatQuotePartsField);
 
   document.addEventListener("visibilitychange", () => {
     if(document.visibilityState === "hidden") saveDraft();
@@ -1139,7 +1177,10 @@ function wireAutosave(){
     document.getElementById("draftStatus").textContent = "No saved draft yet.";
   }
 
-  ["equipment","notes","used","next","serviceEquipment","reason","diagnosis","repairsMade","serviceUsed","recommendations"].forEach(id => {
+  [
+    "equipment","notes","used","next",
+    "serviceEquipment","reason","diagnosis","repairsMade","serviceUsed","quoteParts","recommendations"
+  ].forEach(id => {
     autoGrow(document.getElementById(id));
   });
 
@@ -1148,4 +1189,3 @@ function wireAutosave(){
 </script>
 </body>
 </html>
-

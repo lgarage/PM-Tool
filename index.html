@@ -6,19 +6,78 @@
 <title>PM Tool</title>
 
 <style>
-body{font-family:-apple-system,system-ui,Arial;margin:20px;background:#fff;color:#111;}
-.card{max-width:780px;margin:auto;}
-label{font-weight:600;display:block;margin-top:14px;}
-input,textarea{width:100%;padding:10px;font-size:16px;margin-top:6px;box-sizing:border-box;border:1px solid #ccc;border-radius:8px;}
-textarea{min-height:90px;}
-button{padding:12px;margin-top:14px;font-size:16px;width:100%;border:1px solid #ccc;border-radius:8px;background:#f7f7f7;}
-button:active{transform:scale(.99);}
-.inline{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
-.inline button{width:auto;}
-pre{background:#f5f5f5;padding:14px;white-space:pre-wrap;border-radius:8px;border:1px solid #ddd;}
-.small{font-size:13px;opacity:.75;margin-top:6px;}
-.pillbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
-.pillbar button{width:auto;margin-top:0;padding:8px 12px;font-size:14px;}
+body{
+  font-family:-apple-system,system-ui,Arial;
+  margin:20px;
+  background:#fff;
+  color:#111;
+}
+.card{
+  max-width:780px;
+  margin:auto;
+}
+label{
+  font-weight:600;
+  display:block;
+  margin-top:14px;
+}
+input,textarea{
+  width:100%;
+  padding:10px;
+  font-size:16px;
+  margin-top:6px;
+  box-sizing:border-box;
+  border:1px solid #ccc;
+  border-radius:8px;
+}
+textarea{
+  min-height:90px;
+}
+button{
+  padding:12px;
+  margin-top:14px;
+  font-size:16px;
+  width:100%;
+  border:1px solid #ccc;
+  border-radius:8px;
+  background:#f7f7f7;
+}
+button:active{
+  transform:scale(.99);
+}
+.inline{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  align-items:center;
+}
+.inline button{
+  width:auto;
+}
+pre{
+  background:#f5f5f5;
+  padding:14px;
+  white-space:pre-wrap;
+  border-radius:8px;
+  border:1px solid #ddd;
+}
+.small{
+  font-size:13px;
+  opacity:.75;
+  margin-top:6px;
+}
+.pillbar{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-top:10px;
+}
+.pillbar button{
+  width:auto;
+  margin-top:0;
+  padding:8px 12px;
+  font-size:14px;
+}
 </style>
 </head>
 
@@ -29,9 +88,7 @@ pre{background:#f5f5f5;padding:14px;white-space:pre-wrap;border-radius:8px;borde
 <div class="small" id="draftStatus"></div>
 
 <label>Location</label>
-<input id="location" placeholder="Example: im at the take 5 in wauwatosa on monroe avenue">
-
-<button id="fixLocation" type="button">Format Location</button>
+<input id="location" placeholder="Example: I'm at take five on Main Street in Oak Creek">
 
 <label>Date</label>
 <input id="date">
@@ -54,7 +111,7 @@ pre{background:#f5f5f5;padding:14px;white-space:pre-wrap;border-radius:8px;borde
 <label>Parts used (filters / belts / etc.)</label>
 <input id="used" placeholder="Example: one AX 35 belt and one 16 by 25 by one and two 20 by 25 by twos">
 
-<label>Cost of parts used</label>
+<label>Cost of parts</label>
 <input id="cost" placeholder="Example: $23">
 
 <label>Parts needed next PM</label>
@@ -76,15 +133,18 @@ pre{background:#f5f5f5;padding:14px;white-space:pre-wrap;border-radius:8px;borde
 </div>
 
 <script>
-function pad2(n){ return String(n).padStart(2,"0"); }
-function today(){
-  const d=new Date();
-  return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate());
+function pad2(n){
+  return String(n).padStart(2, "0");
 }
 
-const DEFAULT_WORKDONE="Changed filters/belts and verified operations of equipment";
-const DEFAULT_NOTES="All units are running good at this time.";
-const DRAFT_KEY="pm_tool_draft_v6";
+function today(){
+  const d = new Date();
+  return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+}
+
+const DEFAULT_WORKDONE = "Changed filters/belts and verified operations of equipment";
+const DEFAULT_NOTES = "All units are running good at this time.";
+const DRAFT_KEY = "pm_tool_draft_v8";
 
 const KNOWN_FILTER_SIZES = [
   "16x16x2","16x20x2","16x24x2","16x25x2","18x20x2","18x24x2","18x25x2",
@@ -100,7 +160,7 @@ const KNOWN_BELTS = [
   "B38","B42","B44","B46","B49","B54","B56","B57","B61","B62","B64","B65","B66","B68","B75","B81","B96"
 ];
 
-const numMap = {
+const NUM_MAP = {
   zero:"0",
   one:"1", two:"2", three:"3", four:"4", five:"5",
   six:"6", seven:"7", eight:"8", nine:"9", ten:"10",
@@ -108,48 +168,68 @@ const numMap = {
   to:"2", too:"2"
 };
 
+const EQUIP_LABELS = {
+  RTU:"Rooftop Unit",
+  F:"Furnace",
+  UH:"Unit Heater",
+  RH:"Radiant Heater",
+  EF:"Exhaust Fan",
+  MUA:"Make-Up Air Unit"
+};
+
 function convertNumbers(text){
   let t = text || "";
-  Object.keys(numMap).forEach(k=>{
-    const r = new RegExp("\\b"+k+"\\b","gi");
-    t = t.replace(r, numMap[k]);
+  Object.keys(NUM_MAP).forEach(k => {
+    const r = new RegExp("\\b" + k + "\\b", "gi");
+    t = t.replace(r, NUM_MAP[k]);
   });
   return t;
 }
 
-function levenshtein(a,b){
-  const m=a.length, n=b.length;
-  const dp=Array.from({length:m+1},()=>Array(n+1).fill(0));
-  for(let i=0;i<=m;i++) dp[i][0]=i;
-  for(let j=0;j<=n;j++) dp[0][j]=j;
-  for(let i=1;i<=m;i++){
-    for(let j=1;j<=n;j++){
-      const cost = a[i-1]===b[j-1] ? 0 : 1;
-      dp[i][j]=Math.min(dp[i-1][j]+1, dp[i][j-1]+1, dp[i-1][j-1]+cost);
+function levenshtein(a, b){
+  const m = a.length;
+  const n = b.length;
+  const dp = Array.from({length:m + 1}, () => Array(n + 1).fill(0));
+
+  for(let i = 0; i <= m; i++) dp[i][0] = i;
+  for(let j = 0; j <= n; j++) dp[0][j] = j;
+
+  for(let i = 1; i <= m; i++){
+    for(let j = 1; j <= n; j++){
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost
+      );
     }
   }
+
   return dp[m][n];
 }
 
 function closestMatch(value, list, maxDistance){
   let best = value;
   let bestScore = Infinity;
-  list.forEach(item=>{
+
+  list.forEach(item => {
     const d = levenshtein(value.toUpperCase(), item.toUpperCase());
     if(d < bestScore){
       bestScore = d;
       best = item;
     }
   });
+
   return bestScore <= maxDistance ? best : value;
 }
 
 /* ---------- location ---------- */
+
 function titleCaseWords(str){
   return str
     .split(" ")
     .filter(Boolean)
-    .map(w=>{
+    .map(w => {
       if(/^\d/.test(w)) return w;
       return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
     })
@@ -169,9 +249,7 @@ function normalizeStreetSuffix(street){
   s = s.replace(/\bplace\b/g, "Pl.");
   s = s.replace(/\bhighway\b/g, "Hwy.");
 
-  s = titleCaseWords(s);
-
-  return s;
+  return titleCaseWords(s);
 }
 
 function formatTake5Location(raw){
@@ -190,7 +268,7 @@ function formatTake5Location(raw){
 
   let m;
 
-  // Pattern 1: take 5 in oak creek on main street
+  // take 5 in oak creek on main street
   m = t.match(/take 5(?:\s+in)?\s+(.+?)\s+on\s+(.+)$/i);
   if(m){
     const city = titleCaseWords(m[1].trim());
@@ -198,7 +276,7 @@ function formatTake5Location(raw){
     return `Take 5 - ${city} - ${street}`;
   }
 
-  // Pattern 2: take 5 on main street in oak creek
+  // take 5 on main street in oak creek
   m = t.match(/take 5\s+on\s+(.+?)\s+in\s+(.+)$/i);
   if(m){
     const street = normalizeStreetSuffix(m[1].trim());
@@ -206,50 +284,43 @@ function formatTake5Location(raw){
     return `Take 5 - ${city} - ${street}`;
   }
 
-  // fallback
   if(t.includes("take 5")){
     return titleCaseWords(t).replace("Take 5", "Take 5");
   }
 
   return titleCaseWords(t);
 }
+
 /* ---------- equipment ---------- */
-const EQUIP_LABELS = {
-  RTU:"Rooftop Unit",
-  F:"Furnace",
-  UH:"Unit Heater",
-  RH:"Radiant Heater",
-  EF:"Exhaust Fan",
-  MUA:"Make-Up Air Unit"
-};
 
 function normalizeEquipmentSpeech(text){
   let t = (text || "").toLowerCase();
 
-  t = t.replace(/\n/g," ");
-  t = t.replace(/[–—]/g,"-");
-  t = t.replace(/\s+and\s+/g,", ");
-  t = t.replace(/\s{2,}/g," ").trim();
+  t = t.replace(/\n/g, " ");
+  t = t.replace(/[–—]/g, "-");
+  t = t.replace(/\s+and\s+/g, ", ");
+  t = t.replace(/\s{2,}/g, " ").trim();
 
-  t = t.replace(/\bare\s*to\s*you\b/g,"rtu");
-  t = t.replace(/\bar\s*to\s*you\b/g,"rtu");
-  t = t.replace(/\br\s*to\s*you\b/g,"rtu");
-  t = t.replace(/\br\s*too\s*you\b/g,"rtu");
-  t = t.replace(/\br\s*two\s*you\b/g,"rtu");
-  t = t.replace(/\br\s*t\s*u\b/g,"rtu");
-  t = t.replace(/\brt\s*you\b/g,"rtu");
-  t = t.replace(/\brt\s*u\b/g,"rtu");
-  t = t.replace(/\brt\b/g,"rtu");
-  t = t.replace(/\bhour\s*to\s*you\b/g,"rtu");
-  t = t.replace(/\bone\s*hour\s*to\s*you\b/g,"1 rtu");
-  t = t.replace(/\b1\s*hour\s*to\s*you\b/g,"1 rtu");
+  // RTU dictation junk
+  t = t.replace(/\bare\s*to\s*you\b/g, "rtu");
+  t = t.replace(/\bar\s*to\s*you\b/g, "rtu");
+  t = t.replace(/\br\s*to\s*you\b/g, "rtu");
+  t = t.replace(/\br\s*too\s*you\b/g, "rtu");
+  t = t.replace(/\br\s*two\s*you\b/g, "rtu");
+  t = t.replace(/\br\s*t\s*u\b/g, "rtu");
+  t = t.replace(/\brt\s*you\b/g, "rtu");
+  t = t.replace(/\brt\s*u\b/g, "rtu");
+  t = t.replace(/\brt\b/g, "rtu");
+  t = t.replace(/\bhour\s*to\s*you\b/g, "rtu");
+  t = t.replace(/\bone\s*hour\s*to\s*you\b/g, "1 rtu");
+  t = t.replace(/\b1\s*hour\s*to\s*you\b/g, "1 rtu");
 
-  t = t.replace(/\bfurnaces?\b/g,"furnace");
-  t = t.replace(/\bunit heaters?\b/g,"unit heater");
-  t = t.replace(/\bradiant heaters?\b/g,"radiant heater");
-  t = t.replace(/\bexhaust fans?\b/g,"exhaust fan");
-  t = t.replace(/\bmake[\s-]?up air(?: unit)?s?\b/g,"mua");
-  t = t.replace(/\brooftop units?\b/g,"rtu");
+  t = t.replace(/\bfurnaces?\b/g, "furnace");
+  t = t.replace(/\bunit heaters?\b/g, "unit heater");
+  t = t.replace(/\bradiant heaters?\b/g, "radiant heater");
+  t = t.replace(/\bexhaust fans?\b/g, "exhaust fan");
+  t = t.replace(/\bmake[\s-]?up air(?: unit)?s?\b/g, "mua");
+  t = t.replace(/\brooftop units?\b/g, "rtu");
 
   t = convertNumbers(t);
   return t;
@@ -269,23 +340,23 @@ function expandEquipmentCounts(text){
 
   const out = [];
 
-  patterns.forEach(p=>{
+  patterns.forEach(p => {
     let m;
     while((m = p.re.exec(t)) !== null){
-      const count = parseInt(m[1],10);
+      const count = parseInt(m[1], 10);
       if(!Number.isNaN(count) && count > 0 && count < 50){
-        for(let i=1;i<=count;i++) out.push(p.code + i);
+        for(let i = 1; i <= count; i++) out.push(p.code + i);
       }
     }
   });
 
   const directMatches = [...t.matchAll(/\b(RTU|RH|UH|F|EF|MUA)\s*-?\s*(\d+)\b/gi)];
-  directMatches.forEach(m=>{
+  directMatches.forEach(m => {
     out.push(m[1].toUpperCase() + m[2]);
   });
 
   const unique = [];
-  out.forEach(x=>{
+  out.forEach(x => {
     if(!unique.includes(x)) unique.push(x);
   });
 
@@ -293,13 +364,14 @@ function expandEquipmentCounts(text){
 }
 
 function parseEquipCodes(codeCsv){
-  return (codeCsv || "").split(",").map(s=>s.trim()).filter(Boolean);
+  return (codeCsv || "").split(",").map(s => s.trim()).filter(Boolean);
 }
 
 function expandEquipment(codeCsv){
   const codes = parseEquipCodes(codeCsv);
   if(!codes.length) return "Not listed";
-  return codes.map(c=>{
+
+  return codes.map(c => {
     const m = c.match(/^([A-Z]+)(\d+)$/);
     if(!m) return c;
     const label = EQUIP_LABELS[m[1]] || m[1];
@@ -308,34 +380,39 @@ function expandEquipment(codeCsv){
 }
 
 function firstUnitOfType(codes, type){
-  return codes.find(c=>c.startsWith(type)) || null;
+  return codes.find(c => c.startsWith(type)) || null;
 }
 
 /* ---------- parts ---------- */
+
 function normalizeFilterSize(rawSize){
   let s = rawSize.toLowerCase().trim();
-  s = s.replace(/\bbuy\b/g,"by");
+  s = s.replace(/\bbuy\b/g, "by");
   s = convertNumbers(s);
-  s = s.replace(/\s+by\s+/g,"x");
-  s = s.replace(/\s*x\s*/g,"x");
-  s = s.replace(/\s+/g,"");
-  s = s.replace(/[^0-9x]/g,"");
+  s = s.replace(/\s+by\s+/g, "x");
+  s = s.replace(/\s*x\s*/g, "x");
+  s = s.replace(/\s+/g, "");
+  s = s.replace(/[^0-9x]/g, "");
+
   const nums = s.split("x").filter(Boolean);
   if(nums.length === 3){
     s = `${nums[0]}x${nums[1]}x${nums[2]}`;
   }
-  return closestMatch(s.toUpperCase(), KNOWN_FILTER_SIZES.map(x=>x.toUpperCase()), 2);
+
+  return closestMatch(s.toUpperCase(), KNOWN_FILTER_SIZES.map(x => x.toUpperCase()), 2);
 }
 
 function normalizeBeltCode(rawCode){
   let s = rawCode.toUpperCase().trim();
-  s = s.replace(/\s+/g,"");
-  s = s.replace(/[-_]/g,"");
+  s = s.replace(/\s+/g, "");
+  s = s.replace(/[-_]/g, "");
+
   const m = s.match(/^(AX|BX|A|B|4L)(\d+)$/);
   if(m){
     const code = m[1] + m[2];
     return closestMatch(code, KNOWN_BELTS, 1);
   }
+
   return closestMatch(s, KNOWN_BELTS, 1);
 }
 
@@ -343,9 +420,9 @@ function parsePartItem(item){
   let t = item.toLowerCase().trim();
   if(!t) return [];
 
-  t = t.replace(/\bbuy\b/g,"by");
+  t = t.replace(/\bbuy\b/g, "by");
   t = convertNumbers(t);
-  t = t.replace(/\s{2,}/g," ").trim();
+  t = t.replace(/\s{2,}/g, " ").trim();
 
   let beltMatch = t.match(/^(\d+)\s+(ax|bx|a|b|4l)\s*-?\s*(\d+)\s*(belt|belts)?$/i);
   if(beltMatch){
@@ -362,11 +439,11 @@ function parsePartItem(item){
   }
 
   let filterText = t;
-  filterText = filterText.replace(/\bbuy\b/g,"by");
-  filterText = filterText.replace(/\s+by\s+/g," x ");
-  filterText = filterText.replace(/\s*x\s*/g," x ");
-  filterText = filterText.replace(/\b(filters?|filter|pleated)\b/g,"");
-  filterText = filterText.replace(/\s{2,}/g," ").trim();
+  filterText = filterText.replace(/\bbuy\b/g, "by");
+  filterText = filterText.replace(/\s+by\s+/g, " x ");
+  filterText = filterText.replace(/\s*x\s*/g, " x ");
+  filterText = filterText.replace(/\b(filters?|filter|pleated)\b/g, "");
+  filterText = filterText.replace(/\s{2,}/g, " ").trim();
 
   let m = filterText.match(/^(\d+)x(\d+)x(\d+)x(\d+)$/i);
   if(m){
@@ -405,25 +482,53 @@ function normalizeParts(text){
   let t = (text || "").trim();
   if(!t) return "";
 
-  t = t.replace(/\n/g," ");
-  t = t.replace(/\s+and\s+/gi,", ");
-  t = t.replace(/\s{2,}/g," ").trim();
+  t = t.replace(/\n/g, " ");
+  t = t.replace(/\s+and\s+/gi, ", ");
+  t = t.replace(/\s{2,}/g, " ").trim();
 
-  const items = t.split(/[,;]+/).map(s=>s.trim()).filter(Boolean);
+  const items = t.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
   const out = [];
 
-  items.forEach(item=>{
-    parsePartItem(item).forEach(x=>out.push(x));
+  items.forEach(item => {
+    parsePartItem(item).forEach(x => out.push(x));
   });
 
   return out.join(", ");
 }
 
-/* ---------- notes ---------- */
+/* ---------- notes / repairs ---------- */
+
 function normalizeNotesForParsing(text){
-  let t = (text || "").trim();
-  t = normalizeEquipmentSpeech(t);
-  t = t.replace(/\s{2,}/g," ").trim();
+  let t = (text || "").trim().toLowerCase();
+
+  t = t.replace(/\n/g, " ");
+  t = t.replace(/\s{2,}/g, " ").trim();
+
+  // RTU dictation junk
+  t = t.replace(/\bare\s*to\s*you\b/g,"rtu");
+  t = t.replace(/\bar\s*to\s*you\b/g,"rtu");
+  t = t.replace(/\br\s*to\s*you\b/g,"rtu");
+  t = t.replace(/\br\s*too\s*you\b/g,"rtu");
+  t = t.replace(/\br\s*two\s*you\b/g,"rtu");
+  t = t.replace(/\br\s*t\s*u\b/g,"rtu");
+  t = t.replace(/\brt\s*you\b/g,"rtu");
+  t = t.replace(/\brt\s*u\b/g,"rtu");
+  t = t.replace(/\brt\b/g,"rtu");
+  t = t.replace(/\bhour\s*to\s*you\b/g,"rtu");
+
+  // other equipment names
+  t = t.replace(/\bfurnaces?\b/g,"furnace");
+  t = t.replace(/\bunit heaters?\b/g,"unit heater");
+  t = t.replace(/\bradiant heaters?\b/g,"radiant heater");
+  t = t.replace(/\bexhaust fans?\b/g,"exhaust fan");
+  t = t.replace(/\bmake[\s-]?up air(?: unit)?s?\b/g,"mua");
+  t = t.replace(/\brooftop units?\b/g,"rtu");
+
+  t = convertNumbers(t);
+
+  // rtu 1 -> RTU1
+  t = t.replace(/\b(rtu|rh|uh|f|ef|mua)\s*(\d+)\b/gi, (_, a, n) => `${a.toUpperCase()}${n}`);
+
   return t;
 }
 
@@ -444,30 +549,25 @@ function extractRepairsFromNotes(notesText, equipCodes){
     return /\b(needs?|need|replace|replaced|failed|bad|broken|repair|recommend|suggest|not working|no heat|no cooling|leaking|motor|belt|capacitor|blower|fan|heat exchanger|cracked)\b/i.test(s);
   }
 
-  pieces.forEach(piece=>{
+  pieces.forEach(piece => {
     const norm = normalizeNotesForParsing(piece);
     let unit = null;
 
-    // explicit unit like RTU1
     const explicit = norm.match(/\b(RTU|RH|UH|F|EF|MUA)\d+\b/i);
     if(explicit) unit = explicit[0].toUpperCase();
 
-    // infer by type if no explicit number
-    if(!unit && /\brtu\b/i.test(norm)) unit = firstUnitOfType(equipCodes,"RTU");
-    if(!unit && /\bfurnace\b|\bf\b/i.test(norm)) unit = firstUnitOfType(equipCodes,"F");
-    if(!unit && /\bunit heater\b|\buh\b/i.test(norm)) unit = firstUnitOfType(equipCodes,"UH");
-    if(!unit && /\bradiant heater\b|\brh\b/i.test(norm)) unit = firstUnitOfType(equipCodes,"RH");
-    if(!unit && /\bexhaust fan\b|\bef\b/i.test(norm)) unit = firstUnitOfType(equipCodes,"EF");
-    if(!unit && /\bmua\b|make up air/i.test(norm)) unit = firstUnitOfType(equipCodes,"MUA");
+    if(!unit && /\brtu\b/i.test(norm)) unit = firstUnitOfType(equipCodes, "RTU");
+    if(!unit && /\bfurnace\b|\bf\b/i.test(norm)) unit = firstUnitOfType(equipCodes, "F");
+    if(!unit && /\bunit heater\b|\buh\b/i.test(norm)) unit = firstUnitOfType(equipCodes, "UH");
+    if(!unit && /\bradiant heater\b|\brh\b/i.test(norm)) unit = firstUnitOfType(equipCodes, "RH");
+    if(!unit && /\bexhaust fan\b|\bef\b/i.test(norm)) unit = firstUnitOfType(equipCodes, "EF");
+    if(!unit && /\bmua\b|make up air/i.test(norm)) unit = firstUnitOfType(equipCodes, "MUA");
 
     if(unit && looksLikeRepair(norm)){
       let msg = piece.trim();
-
-      // remove spoken equipment reference from the front of the message
-      msg = msg.replace(/^(rtu|rt|furnace|unit heater|radiant heater|exhaust fan|make[\s-]?up air|mua|ef|rh|uh|f)\s*-?\s*(one|two|three|four|five|six|seven|eight|nine|ten|\d+)?\s*/i,"");
-      msg = msg.replace(/^\s*[:\-–]\s*/,"");
+      msg = msg.replace(/^(rtu|rt|furnace|unit heater|radiant heater|exhaust fan|make[\s-]?up air|mua|ef|rh|uh|f)\s*-?\s*(one|two|three|four|five|six|seven|eight|nine|ten|\d+)?\s*/i, "");
+      msg = msg.replace(/^\s*[:\-–]\s*/, "");
       if(!msg) msg = "Repair needed.";
-
       repairs.push(`${unit} – ${msg}`);
     } else {
       general.push(piece);
@@ -481,6 +581,7 @@ function extractRepairsFromNotes(notesText, equipCodes){
 }
 
 /* ---------- draft ---------- */
+
 function getFields(){
   return {
     location: document.getElementById("location").value || "",
@@ -518,6 +619,7 @@ function saveDraft(){
 function loadDraft(){
   const raw = localStorage.getItem(DRAFT_KEY);
   if(!raw) return false;
+
   try{
     const d = JSON.parse(raw);
     setFields(d);
@@ -534,11 +636,6 @@ function loadDraft(){
 }
 
 /* ---------- ui ---------- */
-document.getElementById("fixLocation").onclick = function(){
-  const current = document.getElementById("location").value;
-  document.getElementById("location").value = formatTake5Location(current);
-  saveDraft();
-};
 
 document.getElementById("same").onclick = function(){
   document.getElementById("next").value = document.getElementById("used").value;
@@ -558,11 +655,13 @@ document.getElementById("generate").onclick = function(){
   const notesRaw = (document.getElementById("notes").value || "").trim();
   const extracted = extractRepairsFromNotes(notesRaw, equipCodes);
 
-  const notesFinal = (notesRaw && extracted.general)
-    ? extracted.general
-    : (notesRaw && extracted.repairs.length && !extracted.general)
-      ? notesRaw
-      : DEFAULT_NOTES;
+  let notesFinal = DEFAULT_NOTES;
+
+  if(extracted.general){
+    notesFinal = extracted.general;
+  } else if(extracted.repairs.length){
+    notesFinal = extracted.repairs.join("\n");
+  }
 
   const usedRaw = document.getElementById("used").value || "";
   const used = usedRaw ? (normalizeParts(usedRaw) || usedRaw) : "None";
@@ -615,6 +714,7 @@ document.getElementById("copy").onclick = function(){
 
 document.getElementById("clear").onclick = function(){
   if(!confirm("Clear everything (including saved draft)?")) return;
+
   localStorage.removeItem(DRAFT_KEY);
   document.getElementById("location").value = "";
   document.getElementById("date").value = today();
@@ -632,29 +732,40 @@ function addEquipmentCode(prefix){
   const current = (document.getElementById("equipment").value || "").trim();
   const codes = parseEquipCodes(expandEquipmentCounts(current));
   let max = 0;
-  codes.forEach(c=>{
+
+  codes.forEach(c => {
     const m = c.match(new RegExp("^" + prefix + "(\\d+)$"));
-    if(m) max = Math.max(max, parseInt(m[1],10));
+    if(m) max = Math.max(max, parseInt(m[1], 10));
   });
+
   const nextNum = max + 1;
   const appendText = current ? current + ", " + prefix + nextNum : prefix + nextNum;
   document.getElementById("equipment").value = appendText;
   saveDraft();
 }
 
-document.getElementById("addRTU").onclick = ()=>addEquipmentCode("RTU");
-document.getElementById("addF").onclick = ()=>addEquipmentCode("F");
-document.getElementById("addUH").onclick = ()=>addEquipmentCode("UH");
-document.getElementById("addRH").onclick = ()=>addEquipmentCode("RH");
-document.getElementById("addEF").onclick = ()=>addEquipmentCode("EF");
-document.getElementById("addMUA").onclick = ()=>addEquipmentCode("MUA");
+document.getElementById("addRTU").onclick = () => addEquipmentCode("RTU");
+document.getElementById("addF").onclick = () => addEquipmentCode("F");
+document.getElementById("addUH").onclick = () => addEquipmentCode("UH");
+document.getElementById("addRH").onclick = () => addEquipmentCode("RH");
+document.getElementById("addEF").onclick = () => addEquipmentCode("EF");
+document.getElementById("addMUA").onclick = () => addEquipmentCode("MUA");
 
 function wireAutosave(){
-  ["location","date","equipment","notes","used","cost","next","workdone"].forEach(id=>{
+  ["location","date","equipment","notes","used","cost","next","workdone"].forEach(id => {
     document.getElementById(id).addEventListener("input", saveDraft);
   });
 
-  document.addEventListener("visibilitychange", ()=>{
+  // auto-format location whenever user leaves the field
+  document.getElementById("location").addEventListener("blur", () => {
+    const current = document.getElementById("location").value;
+    if(current.trim()){
+      document.getElementById("location").value = formatTake5Location(current);
+      saveDraft();
+    }
+  });
+
+  document.addEventListener("visibilitychange", () => {
     if(document.visibilityState === "hidden") saveDraft();
   });
 
@@ -675,7 +786,3 @@ function wireAutosave(){
 </script>
 </body>
 </html>
-
-
-
-

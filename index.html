@@ -3,171 +3,269 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HVAC Note Tool</title>
+<title>Tech Note Tool | Twin Pillars</title>
 
 <style>
-body{
-  font-family:-apple-system,system-ui,Arial;
-  margin:20px;
-  background:#fff;
-  color:#111;
+/* --- Twin Pillars Branding --- */
+body {
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  margin: 20px;
+  background: #f7f9fb;
+  color: #333;
 }
-.card{
-  max-width:900px;
-  margin:auto;
+.card {
+  max-width: 900px;
+  margin: auto;
+  background: #fff;
+  padding: 30px;
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+  box-sizing: border-box;
 }
-label{
-  font-weight:600;
-  display:block;
-  margin-top:14px;
+
+/* Header & Logo */
+.header-logo {
+  text-align: center;
+  margin-bottom: 10px;
 }
-input,textarea,select{
-  width:100%;
-  padding:10px;
-  font-size:16px;
-  margin-top:6px;
-  box-sizing:border-box;
-  border:1px solid #ccc;
-  border-radius:8px;
-  background:#fff;
+.header-logo img {
+  max-width: 180px;
+  height: auto;
 }
-textarea{
-  min-height:90px;
-  white-space:pre-wrap;
-  overflow-wrap:break-word;
-  resize:vertical;
+h2 {
+  text-align: center;
+  color: #1e4b85; /* Twin Pillars Dark Blue */
+  margin-top: 0;
+  margin-bottom: 5px;
+  font-weight: bold;
 }
-button{
-  padding:12px;
-  margin-top:14px;
-  font-size:16px;
-  width:100%;
-  border:1px solid #ccc;
-  border-radius:8px;
-  background:#f7f7f7;
+#draftStatus {
+  text-align: center;
+  color: #777;
+  margin-bottom: 20px;
 }
-button:active{
-  transform:scale(.99);
+
+/* Form Elements */
+label {
+  font-weight: bold;
+  display: block;
+  margin-top: 18px;
+  color: #1e4b85;
+  font-size: 14px;
 }
-.inline{
-  display:flex;
-  gap:10px;
-  flex-wrap:wrap;
-  align-items:flex-start;
+input, textarea, select {
+  width: 100%;
+  padding: 12px;
+  font-size: 16px;
+  margin-top: 6px;
+  box-sizing: border-box;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #fafbfc;
+  font-family: inherit;
+  transition: border-color 0.2s;
 }
-.inline .grow{
-  flex:1 1 320px;
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: #c89b53; /* Twin Pillars Gold */
+  box-shadow: 0 0 5px rgba(200, 155, 83, 0.3);
+  background: #fff;
 }
-.inline button{
-  width:auto;
+textarea {
+  min-height: 90px;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  resize: vertical;
 }
-pre{
-  background:#f5f5f5;
-  padding:14px;
-  white-space:pre-wrap;
-  border-radius:8px;
-  border:1px solid #ddd;
+
+/* Buttons */
+button {
+  padding: 12px;
+  margin-top: 14px;
+  font-size: 16px;
+  width: 100%;
+  border: 1px solid #dcdcdc;
+  border-radius: 6px;
+  background: #f2f4f6;
+  color: #333;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s ease;
 }
-.small{
-  font-size:13px;
-  opacity:.75;
-  margin-top:6px;
+button:hover {
+  background: #e2e6ea;
 }
-.pillbar{
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-  margin-top:10px;
+button:active {
+  transform: scale(.98);
 }
-.pillbar button{
-  width:auto;
-  margin-top:0;
-  padding:8px 12px;
-  font-size:14px;
+
+/* Mode Bar (Tabs) */
+.modebar {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+  border-bottom: 2px solid #eaeaea;
+  padding-bottom: 15px;
+  margin-bottom: 20px;
 }
-.modebar{
-  display:flex;
-  gap:10px;
-  margin-top:10px;
-  flex-wrap:wrap;
+.modebar button {
+  width: auto;
+  flex: 1;
+  margin-top: 0;
+  padding: 12px 16px;
+  font-weight: bold;
+  border-color: #ccc;
 }
-.modebar button{
-  width:auto;
-  margin-top:0;
-  padding:10px 16px;
+.modebar button.active {
+  background: #1e4b85; /* Twin Pillars Dark Blue */
+  color: #fff;
+  border-color: #1e4b85;
 }
-.modebar button.active{
-  background:#dfefff;
-  border-color:#7aa7ff;
-  font-weight:700;
+
+/* Pill Bar (Quick Add Equipment) */
+.pillbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
 }
-.hidden{
-  display:none;
+.pillbar button {
+  width: auto;
+  margin-top: 0;
+  padding: 8px 12px;
+  font-size: 14px;
+  background: #fff;
+  border: 1px solid #1e4b85;
+  color: #1e4b85;
+  font-weight: bold;
 }
-.history-box{
-  border:1px solid #ddd;
-  border-radius:10px;
-  padding:14px;
-  margin-top:14px;
-  background:#fafafa;
+.pillbar button:hover {
+  background: #f0f4f8;
 }
-.history-list{
-  display:flex;
-  flex-direction:column;
-  gap:8px;
-  margin-top:10px;
+
+/* Primary Action Buttons */
+#generate {
+  background: #c89b53; /* Twin Pillars Gold */
+  color: #fff;
+  border-color: #b58945;
+  font-weight: bold;
+  font-size: 1.1em;
 }
-.history-item{
-  border:1px solid #ddd;
-  border-radius:8px;
-  background:#fff;
-  padding:10px 12px;
-  cursor:pointer;
+#generate:hover { background: #b58945; }
+
+#copy {
+  background: #1e4b85;
+  color: #fff;
+  border-color: #153661;
+  font-weight: bold;
 }
-.history-item:hover{
-  background:#f3f8ff;
+#copy:hover { background: #153661; }
+
+#clear {
+  background: #fff;
+  color: #e74c3c;
+  border-color: #e74c3c;
+  font-weight: bold;
 }
-.history-item.active{
-  border-color:#7aa7ff;
-  background:#eaf2ff;
+#clear:hover { background: #fdf2f1; }
+
+.inline {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: flex-start;
 }
-.history-title{
-  font-weight:700;
+.inline .grow {
+  flex: 1 1 320px;
 }
-.history-sub{
-  font-size:14px;
-  opacity:.8;
-  margin-top:4px;
+.inline button {
+  width: auto;
+  background: #1e4b85;
+  color: #fff;
+  border: none;
 }
-.summary-card{
-  border:1px solid #ddd;
-  border-radius:10px;
-  background:#fff;
-  padding:14px;
-  margin-top:12px;
+
+/* Output Area */
+pre {
+  background: #fdfdfd;
+  padding: 20px;
+  white-space: pre-wrap;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.5;
+  color: #2c3e50;
 }
-.summary-card h3{
-  margin:0 0 10px 0;
-  font-size:18px;
+.small { font-size: 13px; opacity: .75; margin-top: 6px; }
+.hidden { display: none; }
+
+/* History Section */
+.history-box {
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 20px;
+  margin-top: 14px;
+  background: #fafbfc;
 }
-.summary-row{
-  margin-top:8px;
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
 }
-.summary-label{
-  font-weight:700;
+.history-item {
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #fff;
+  padding: 15px;
+  cursor: pointer;
+  transition: all 0.2s;
 }
-hr.soft{
-  border:none;
-  border-top:1px solid #e5e5e5;
-  margin:16px 0;
+.history-item:hover {
+  background: #f0f4f8;
 }
+.history-item.active {
+  border-color: #c89b53;
+  background: #fdfaf2;
+}
+.history-title {
+  font-weight: 700;
+  color: #1e4b85;
+}
+.history-sub {
+  font-size: 14px;
+  opacity: .8;
+  margin-top: 6px;
+}
+.summary-card {
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  background: #fff;
+  padding: 20px;
+  margin-top: 15px;
+}
+.summary-card h3 {
+  margin: 0 0 15px 0;
+  font-size: 18px;
+  color: #1e4b85;
+  border-bottom: 2px solid #f2f2f2;
+  padding-bottom: 10px;
+}
+.summary-row { margin-top: 10px; font-size: 15px; }
+.summary-label { font-weight: 700; color: #555; }
+hr.soft { border: none; border-top: 1px solid #e5e5e5; margin: 25px 0; }
 </style>
 </head>
 
 <body>
 <div class="card">
 
-<h2>HVAC Note Tool</h2>
+<div class="header-logo">
+  <img src="logo.png" alt="Twin Pillars Logo">
+</div>
+<h2>Field Notes Tool</h2>
 <div class="small" id="draftStatus"></div>
 
 <div class="modebar">
@@ -180,7 +278,6 @@ hr.soft{
   <label>Location</label>
   <input id="location" placeholder="Example: I'm at the Planet Fitness in Milwaukee on Main Street">
 
-  <!-- PM SECTION -->
   <div id="pmSection">
     <label>Equipment on Site</label>
     <textarea id="equipment" placeholder="Example: one RTU, one furnace, one unit heater, two radiant heaters"></textarea>
@@ -215,7 +312,6 @@ hr.soft{
     <input id="workdone">
   </div>
 
-  <!-- SERVICE SECTION -->
   <div id="serviceSection" class="hidden">
     <label>Equipment worked on</label>
     <textarea id="serviceEquipment" placeholder="Example: RTU1 or THERMOSTAT or RTU1, THERMOSTAT"></textarea>
@@ -253,7 +349,6 @@ hr.soft{
   <pre id="output"></pre>
 </div>
 
-<!-- HISTORY SECTION -->
 <div id="historySection" class="hidden">
   <div class="history-box">
     <label>Customer</label>
@@ -1285,35 +1380,7 @@ document.getElementById("generate").onclick = function(){
     const cost = document.getElementById("cost").value || "Unknown";
     const workdone = document.getElementById("workdone").value || DEFAULT_PM_WORKDONE;
 
-    report = `PM
-
-Location:
-${location}
-
-Date:
-${date}
-
-Equipment on Site:
-${equip}
-
-Notes / Repairs:
-${notesFinal}
-
-Work done:
-${workdone}
-
-Parts used:
-${used}
-
-Cost of parts (if known):
-${cost}
-
-Parts needed next PM:
-${next}
-
-Pictures:
-Nameplate photos attached.
-`;
+    report = `PM\n\nLocation:\n${location}\n\nDate:\n${date}\n\nEquipment on Site:\n${equip}\n\nNotes / Repairs:\n${notesFinal}\n\nWork done:\n${workdone}\n\nParts used:\n${used}\n\nCost of parts (if known):\n${cost}\n\nParts needed next PM:\n${next}\n\nPictures:\nNameplate photos attached.\n`;
 
     visit = {
       date,
@@ -1347,44 +1414,7 @@ Nameplate photos attached.
     const quoteLabor = document.getElementById("quoteLabor").value.trim() || "NONE";
     const recommendations = document.getElementById("recommendations").value.trim() || "None.";
 
-    report = `SERVICE CALL
-
-Location:
-${location}
-
-Date:
-${date}
-
-Equipment worked on:
-${serviceEquipDisplay}
-
-Reason for call:
-${reason}
-
-Findings / Diagnosis:
-${diagnosis}
-
-Repairs made:
-${repairsMade}
-
-Parts used:
-${used}
-
-Cost of parts (if known):
-${cost}
-
-Parts needed for repair quote:
-${quoteParts}
-
-Labor for repair quote:
-${quoteLabor}
-
-Recommendations / Next steps:
-${recommendations}
-
-Pictures:
-Nameplate photos attached.
-`;
+    report = `SERVICE CALL\n\nLocation:\n${location}\n\nDate:\n${date}\n\nEquipment worked on:\n${serviceEquipDisplay}\n\nReason for call:\n${reason}\n\nFindings / Diagnosis:\n${diagnosis}\n\nRepairs made:\n${repairsMade}\n\nParts used:\n${used}\n\nCost of parts (if known):\n${cost}\n\nParts needed for repair quote:\n${quoteParts}\n\nLabor for repair quote:\n${quoteLabor}\n\nRecommendations / Next steps:\n${recommendations}\n\nPictures:\nNameplate photos attached.\n`;
 
     visit = {
       date,

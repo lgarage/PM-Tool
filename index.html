@@ -314,7 +314,16 @@ hr.soft { border: none; border-top: 1px solid #e5e5e5; margin: 25px 0; }
 
   <div id="serviceSection" class="hidden">
     <label>Equipment worked on</label>
-    <textarea id="serviceEquipment" placeholder="Example: RTU1 or THERMOSTAT or RTU1, THERMOSTAT"></textarea>
+    <textarea id="serviceEquipment" placeholder="Example: one RTU, one furnace..."></textarea>
+    
+    <div class="pillbar">
+      <button id="addServiceRTU" type="button">+ RTU</button>
+      <button id="addServiceF" type="button">+ Furnace</button>
+      <button id="addServiceUH" type="button">+ Unit Heater</button>
+      <button id="addServiceRH" type="button">+ Radiant Heater</button>
+      <button id="addServiceEF" type="button">+ Exhaust Fan</button>
+      <button id="addServiceMUA" type="button">+ MUA</button>
+    </div>
 
     <label>Reason for call</label>
     <textarea id="reason" placeholder="Example: No heat in lobby."></textarea>
@@ -674,23 +683,6 @@ function firstUnitOfType(codes, type){
 function formatEquipmentFieldValue(raw){
   const codes = expandEquipmentCounts(raw);
   return codes || raw;
-}
-
-/* ---------- service equipment ---------- */
-function normalizeServiceEquipment(raw){
-  let t = (raw || "").trim();
-  if(!t) return "";
-
-  const parsed = expandEquipmentCounts(t);
-  if(parsed) return parsed;
-
-  return t
-    .replace(/\s+and\s+/gi, ", ")
-    .split(/[,;]+/)
-    .map(s => s.trim())
-    .filter(Boolean)
-    .map(s => s.toUpperCase())
-    .join(", ");
 }
 
 /* ---------- parts parsing ---------- */
@@ -1247,7 +1239,8 @@ function formatServiceEquipmentField(){
   const el = document.getElementById("serviceEquipment");
   const current = el.value;
   if(current.trim()){
-    el.value = normalizeServiceEquipment(current);
+    // Now matches exactly what PM equipment formatting uses.
+    el.value = formatEquipmentFieldValue(current);
     autoGrow(el);
     saveDraft();
   }
@@ -1503,8 +1496,10 @@ document.getElementById("clear").onclick = function(){
   saveDraft();
 };
 
-function addEquipmentCode(prefix){
-  const current = (document.getElementById("equipment").value || "").trim();
+/* Unified Add Equipment function */
+function addEquipmentCode(fieldId, prefix){
+  const el = document.getElementById(fieldId);
+  const current = (el.value || "").trim();
   const codes = parseEquipCodes(current);
   let max = 0;
 
@@ -1515,17 +1510,26 @@ function addEquipmentCode(prefix){
 
   const nextNum = max + 1;
   const appendText = current ? current + ", " + prefix + nextNum : prefix + nextNum;
-  document.getElementById("equipment").value = appendText;
-  autoGrow(document.getElementById("equipment"));
+  el.value = appendText;
+  autoGrow(el);
   saveDraft();
 }
 
-document.getElementById("addRTU").onclick = () => addEquipmentCode("RTU");
-document.getElementById("addF").onclick = () => addEquipmentCode("F");
-document.getElementById("addUH").onclick = () => addEquipmentCode("UH");
-document.getElementById("addRH").onclick = () => addEquipmentCode("RH");
-document.getElementById("addEF").onclick = () => addEquipmentCode("EF");
-document.getElementById("addMUA").onclick = () => addEquipmentCode("MUA");
+/* PM Pill Buttons */
+document.getElementById("addRTU").onclick = () => addEquipmentCode("equipment", "RTU");
+document.getElementById("addF").onclick = () => addEquipmentCode("equipment", "F");
+document.getElementById("addUH").onclick = () => addEquipmentCode("equipment", "UH");
+document.getElementById("addRH").onclick = () => addEquipmentCode("equipment", "RH");
+document.getElementById("addEF").onclick = () => addEquipmentCode("equipment", "EF");
+document.getElementById("addMUA").onclick = () => addEquipmentCode("equipment", "MUA");
+
+/* Service Pill Buttons */
+document.getElementById("addServiceRTU").onclick = () => addEquipmentCode("serviceEquipment", "RTU");
+document.getElementById("addServiceF").onclick = () => addEquipmentCode("serviceEquipment", "F");
+document.getElementById("addServiceUH").onclick = () => addEquipmentCode("serviceEquipment", "UH");
+document.getElementById("addServiceRH").onclick = () => addEquipmentCode("serviceEquipment", "RH");
+document.getElementById("addServiceEF").onclick = () => addEquipmentCode("serviceEquipment", "EF");
+document.getElementById("addServiceMUA").onclick = () => addEquipmentCode("serviceEquipment", "MUA");
 
 function addEnterFormatter(id, formatter){
   document.getElementById(id).addEventListener("keydown", (e) => {
@@ -1598,4 +1602,3 @@ function wireAutosave(){
 </script>
 </body>
 </html>
-

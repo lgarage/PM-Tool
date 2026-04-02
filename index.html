@@ -1926,37 +1926,21 @@ function wireAutosave(){
 
 /* ---------- init ---------- */
 (function init(){
-  // 1. Set the default value for the PM tab
-  document.getElementById("workdone").value = DEFAULT_PM_WORKDONE;
-  applyMode();
+  // 1. Attempt to load the saved draft from localStorage
+  const hasDraft = loadDraft();
 
-  // 2. Wipe the location box and output block clean
-  document.getElementById("location").value = "";
-  document.getElementById("output").textContent = "";
+  // 2. If no draft exists (first time use or after clearing cache), set up a fresh form
+  if (!hasDraft) {
+    document.getElementById("workdone").value = DEFAULT_PM_WORKDONE;
+    applyMode();
+    document.getElementById("draftStatus").textContent = "New blank form ready.";
+    populateHistoryCustomers();
+  }
 
-  // 3. Silently clear all fields for all three tabs
-  const fieldsToClear = [
-    "equipment","notes","used","cost","next",
-    "serviceEquipment","reason","diagnosis","repairsMade","serviceUsed","serviceCost","quoteParts","quoteLabor","recommendations",
-    "quoteEquip","quoteIssue","quoteRepairs","quoteTesting","quoteRecs"
-  ];
-  
-  fieldsToClear.forEach(id => {
-      const el = document.getElementById(id);
-      if(el) {
-          el.value = "";
-          autoGrow(el); // Reset the height of textareas
-      }
-  });
-
-  // 4. Overwrite the saved draft memory with this new, empty state
-  saveDraft();
-  
-  document.getElementById("draftStatus").textContent = "New blank form ready.";
-  populateHistoryCustomers();
-
+  // 3. Wire up the autosave listeners so typing saves the draft instantly
   wireAutosave();
 })();
+
   
 </script>
 </body>

@@ -318,7 +318,7 @@ hr.soft { border: none; border-top: 1px solid #e5e5e5; margin: 25px 0; }
     <label>Labor for repair quote</label>
     <input id="quoteLabor" placeholder="Example: 3 HOURS">
 
-    <label>Recommendations / Next steps</label>
+    <label>Further Recommendations</label>
     <textarea id="recommendations" placeholder="Example: Replace RTU1 due to cracked heat exchanger."></textarea>
   </div>
 
@@ -489,6 +489,8 @@ const EQUIP_LABELS = {
   MUA:"Make-Up Air Unit"
 };
 
+let dynamicEquipLabels = {};
+
 let currentMode = "PM";
 let currentHistoryCustomer = "";
 let currentHistoryLocation = "";
@@ -519,7 +521,30 @@ function normalizeStreetSuffix(street){
   s = s.replace(/\bcourt\b/g, "Ct.");
   s = s.replace(/\bplace\b/g, "Pl.");
   s = s.replace(/\bhighway\b/g, "Hwy.");
+  s = s.replace(/\bst\b/g, "St.");
+  s = s.replace(/\bave\b/g, "Ave.");
+  s = s.replace(/\brd\b/g, "Rd.");
+  s = s.replace(/\bdr\b/g, "Dr.");
+  s = s.replace(/\bblvd\b/g, "Blvd.");
   return titleCaseWords(s);
+}
+
+function finalizeLocationLineUppercase(line){
+  const raw = String(line || "").trim();
+  if(!raw.includes(" - ")){
+    return raw.toUpperCase();
+  }
+  const parts = raw.split(/\s*-\s*/).map(s => s.trim()).filter(Boolean);
+  if(parts.length !== 3){
+    return raw.toUpperCase();
+  }
+  let street = parts[2].toUpperCase().replace(/\s+/g, " ");
+  if(street && !street.endsWith(".")){
+    if(/\b(ST|AVE|RD|DR|BLVD|LN|CT|PL|HWY|TRL|CIR)$/.test(street)){
+      street = street + ".";
+    }
+  }
+  return `${parts[0].toUpperCase()} - ${parts[1].toUpperCase()} - ${street}`;
 }
 
 function normalizeSiteName(name){
@@ -534,11 +559,34 @@ function formatLocation(raw){
   if(!t) return "";
 
   t = t.replace(/^(i am at|i'm at|im at|we are at|heading to|i am in|i'm in|im in|i am on|i'm on|im on)\s+/i, "");
+  t = t.replace(/^(at|@)\s+/i, "");
   t = t.replace(/[.,]/g, " ");
   t = t.replace(/\bthe\b/gi, " ");
   t = t.replace(/\s{2,}/g, " ").trim();
 
   let m;
+
+  m = t.match(/^(.+?)\s+location\s+(.+?)\s+on\s+(.+)$/i);
+  if(m){
+    return `${normalizeSiteName(m[2])} - ${titleCaseWords(m[1])} - ${normalizeStreetSuffix(m[3])}`;
+  }
+
+  m = t.match(/^(.+?)\s+job\s+in\s+(.+?)\s+for\s+(.+)$/i);
+  if(m){
+    return `${normalizeSiteName(m[3])} - ${titleCaseWords(m[2])} - ${normalizeStreetSuffix(m[1])}`;
+  }
+
+  m = t.match(/^(.+?)\s+at\s+(.+?)\s+on\s+(.+)$/i);
+  if(m){
+    return `${normalizeSiteName(m[2])} - ${titleCaseWords(m[1])} - ${normalizeStreetSuffix(m[3])}`;
+  }
+
+  if(!/\s+in\s+/.test(t)){
+    m = t.match(/^(.+?)\s+on\s+(.+?)\s+(\S+)$/i);
+    if(m){
+      return `${normalizeSiteName(m[1])} - ${titleCaseWords(m[3])} - ${normalizeStreetSuffix(m[2])}`;
+    }
+  }
   
   m = t.match(/^(.+?)\s+in\s+(.+?)\s+at\s+(.+)$/i);
   if(m){
@@ -558,6 +606,17 @@ function formatLocation(raw){
   m = t.match(/^(.+?)\s+on\s+(.+?)\s+in\s+(.+)$/i);
   if(m){
     return `${normalizeSiteName(m[1])} - ${titleCaseWords(m[3])} - ${normalizeStreetSuffix(m[2])}`;
+  }
+
+  m = t.match(/^(.+?)\s+(street|st|avenue|ave|road|rd|drive|dr|boulevard|blvd|lane|ln|way|court|ct|place|pl|circle|cir|trail|trl|highway|hwy)\s+(.+?)\s+in\s+(.+)$/i);
+  if(m){
+    const streetRaw = (m[1].trim() + " " + m[2]).trim();
+    return `${normalizeSiteName(m[3])} - ${titleCaseWords(m[4])} - ${normalizeStreetSuffix(streetRaw)}`;
+  }
+
+  m = t.match(/^(\S+)\s+(.+?)\s+on\s+(.+)$/i);
+  if(m){
+    return `${normalizeSiteName(m[2])} - ${titleCaseWords(m[1])} - ${normalizeStreetSuffix(m[3])}`;
   }
 
   m = t.match(/^(.+?)\s+in\s+(.+)$/i);
@@ -584,35 +643,45 @@ async function autoParseLocation() {
         if (!fallbackText.includes(' - ')) {
             fallbackText = rawText; 
         }
-        locInput.value = fallbackText.toUpperCase();
+        locInput.value = finalizeLocationLineUppercase(fallbackText);
         saveDraft();
     };
 
     if (typeof firebaseConfig !== 'undefined' && firebaseConfig.apiKey) {
         const prompt = `
         You are a strict data extraction AI for an HVAC dispatch system.
-        Extract the Business Name, City, and Street from the technician's spoken text.
-        
-        RULES:
-        1. ONLY use the information provided in the input text. DO NOT invent cities or names.
-        2. Identify the Business, City, and Street, REGARDLESS of the order they are spoken.
-        3. IGNORE conversational filler (e.g., "I'm in", "I am at", "we are", "heading to", "over on", "the", "a", "an", "at", "and", "on").
-        4. STRIP leading articles like "A", "AN", or "THE" from the Business Name (e.g., "A Take 5" -> "Take 5").
-        5. Map the extracted entities to a JSON object with EXACTLY these keys: "business", "city", "street".
-        6. Abbreviate street types standardly (e.g., Street -> ST, Avenue -> AVE, Road -> RD, Drive -> DR).
-        7. If a piece of information is missing entirely, leave its value as an empty string "".
-        
-        EXAMPLES:
-        Text: "I'm on Main Street in Milwaukee at a Take 5"
-        Output: {"business": "Take 5", "city": "Milwaukee", "street": "Main ST"}
-        
-        Text: "I am in Madison on Main Street at the Planet Fitness"
-        Output: {"business": "Planet Fitness", "city": "Madison", "street": "Main ST"}
+        Extract Business (customer), City, and Street from the technician's spoken text.
 
-        Text: "Green Bay McDonald's Oneida Street"
-        Output: {"business": "McDonald's", "city": "Green Bay", "street": "Oneida ST"}
-        
-        Text: "${rawText}"
+        FINAL OUTPUT FORMAT (after JSON is applied in code): ALWAYS "CUSTOMER - CITY - STREET" in ALL CAPS, with a period after the street when it ends in an abbreviated type (e.g. MAIN ST., MAYFAIR RD.).
+
+        RULES:
+        1. ONLY use information from the input. DO NOT invent cities or business names.
+        2. Identify business, city, and street in ANY spoken order.
+        3. Strip filler: "I'm in", "I am at", "the", "a", "an", "job", "location" (when it means "site in [area]"), etc., as needed — but keep real place names.
+        4. STRIP leading articles from business names (e.g. "the Planet Fitness" -> Planet Fitness).
+        5. Output JSON with EXACTLY these keys: "business", "city", "street" (Title Case strings for proper nouns; street uses ST, AVE, RD, DR, BLVD, LN, CT, PL, HWY for types).
+        6. If something is missing, use "".
+
+        Pattern hints:
+        - "City at Business on Street" / "in City at Business on Street" -> split into three parts.
+        - "Street ref + job in City for Business" -> street, city, business.
+        - "Business on Street, City" or "At Business on St, City" -> business, city, street.
+        - "[Area] location, Business on Street" -> city/area, business, street.
+
+        TRAINING EXAMPLES (match these extractions):
+        Input: "I'm in Milwaukee at the Planet Fitness on Main Street"
+        Output: {"business":"Planet Fitness","city":"Milwaukee","street":"Main ST"}
+
+        Input: "The Main St job in Milwaukee for Planet Fitness"
+        Output: {"business":"Planet Fitness","city":"Milwaukee","street":"Main ST"}
+
+        Input: "At Planet Fitness on Main St, Milwaukee"
+        Output: {"business":"Planet Fitness","city":"Milwaukee","street":"Main ST"}
+
+        Input: "Wauwatosa location, Planet Fitness on Mayfair Rd"
+        Output: {"business":"Planet Fitness","city":"Wauwatosa","street":"Mayfair RD"}
+
+        Input: "${rawText}"
         Output:
         `;
 
@@ -644,14 +713,14 @@ async function autoParseLocation() {
                 aiResponseText = aiResponseText.replace(/```json/gi, '').replace(/```/g, '').trim();
                 const locationData = JSON.parse(aiResponseText);
                 
-                const business = (locationData.business || "").toUpperCase().trim();
-                const city = (locationData.city || "").toUpperCase().trim();
-                const street = (locationData.street || "").toUpperCase().trim();
+                const business = (locationData.business || "").trim();
+                const city = (locationData.city || "").trim();
+                const street = (locationData.street || "").trim();
                 
                 const finalParts = [business, city, street].filter(Boolean);
                 
                 if (finalParts.length > 0) {
-                    locInput.value = finalParts.join(" - ");
+                    locInput.value = finalizeLocationLineUppercase(finalParts.join(" - "));
                     saveDraft(); 
                 } else {
                     applyFallback();
@@ -775,6 +844,372 @@ async function autoParseParts(fieldId) {
     el.style.backgroundColor = originalBg;
 }
 
+/* ---------- AI full-form parser (dictation → JSON → fields) ---------- */
+function getGeminiApiKey(){
+  return typeof firebaseConfig !== "undefined" && firebaseConfig && firebaseConfig.apiKey
+    ? firebaseConfig.apiKey
+    : "";
+}
+
+function buildDictationForAi(){
+  const loc = (document.getElementById("location").value || "").trim();
+  if(currentMode === "PM"){
+    const parts = [
+      loc,
+      document.getElementById("equipment").value,
+      document.getElementById("notes").value,
+      document.getElementById("used").value,
+      document.getElementById("workdone").value
+    ].filter(s => String(s || "").trim());
+    return parts.join("\n\n");
+  }
+  if(currentMode === "SERVICE"){
+    const parts = [
+      loc,
+      document.getElementById("serviceEquipment").value,
+      document.getElementById("reason").value,
+      document.getElementById("diagnosis").value,
+      document.getElementById("repairsMade").value,
+      document.getElementById("serviceUsed").value,
+      document.getElementById("quoteParts").value,
+      document.getElementById("quoteLabor").value,
+      document.getElementById("recommendations").value
+    ].filter(s => String(s || "").trim());
+    return parts.join("\n\n");
+  }
+  if(currentMode === "QUOTE"){
+    const parts = [
+      loc,
+      document.getElementById("quoteEquip").value,
+      document.getElementById("quoteIssue").value,
+      document.getElementById("quoteRepairs").value,
+      document.getElementById("quoteTesting").value,
+      document.getElementById("quoteRecs").value
+    ].filter(s => String(s || "").trim());
+    return parts.join("\n\n");
+  }
+  return loc;
+}
+
+const GEMINI_EQUIPMENT_SLANG_SYSTEM = `You are the nickname and mapping engine for HVAC equipment mentioned in technician dictation.
+
+SLANG-TO-STANDARD MAPPING (always use these PREFIX values when the tech's words match either column):
+- "Vestibule Heater" OR "Entrance Heater" → Prefix: VH (standard label: Vestibule Heater)
+- "Exhaust Fan" OR "Roof Fan" → Prefix: EF
+- "Unit Heater" OR "Hanging Heater" → Prefix: UH
+- "Rooftop Unit" OR "Package Unit" → Prefix: RTU
+- "Make-Up Air" OR spoken/written "MUA" → Prefix: MUA
+- "Furnace" OR "Closet Unit" → Prefix: F
+Additional commercial equipment (same rules — match any listed synonym):
+- "Condensing Unit" OR "AC Unit" OR "Outdoor Unit" → Prefix: CU
+- "Air Handler" OR "Fan Coil" OR "AHU" → Prefix: AHU
+- "VAV Box" OR "Zone Damper" → Prefix: VAV
+- "Water Heater" OR "Hot Water Tank" → Prefix: WH
+- "Mini Split" OR "Ductless Unit" → Prefix: MS
+Also map when the tech uses obvious synonyms: e.g. "entrance heaters" counts as entrance heater → VH; "package units" → RTU; plural forms of any row above map to the same PREFIX.
+
+MANDATORY SCAN — FIRST-ITEM LIST CAPTURE:
+You MUST perform a strict word-by-word scan of the entire INPUT from start to finish. Every single equipment mention — especially the FIRST one in a sentence, the first clause before a comma, and the first item in a list — MUST be converted into expanded IDs. Do not skip or drop the opening phrase; models often err by ignoring the first list item — that is forbidden here.
+
+RTU PRIORITY (high-priority code):
+RTU / Rooftop Unit / Package Unit is a high-priority equipment type. If the tech says "3 RTUs," "three RTUs," "three rooftop units," or equivalent, you MUST emit RTU1, RTU2, RTU3 (for quantity 3). If RTUs appear FIRST in the dictation, your equipmentCodes string MUST BEGIN with those RTU IDs in order (e.g. start with "RTU1, RTU2, RTU3" before any other IDs). Preserve left-to-right order of mention across the whole note.
+
+LIST INTEGRITY CHECK (before you output JSON):
+Compare the INPUT to your equipmentCodes: count how many DISTINCT equipment types the tech named (e.g. RTUs + unit heaters + exhaust fans = 3 types). Your equipmentCodes MUST include expanded IDs for EVERY type — not 2 of 3, not "the main ones." If the tech mentioned four kinds of units, the output must reflect four kinds of PREFIX groups. Skipping an entire type (e.g. missing all RTUs) is a complete failure — re-scan the input and fix.
+
+ROLE: TRANSPOSER, NOT SUMMARIZER:
+You are a mechanical transposer from speech to IDs. You do NOT decide what is "important," omit duplicates for brevity, or summarize. If it was said, it must appear as IDs (subject to the mapping table). No editorial judgment.
+
+REASONING DIRECTIVE (apply on every equipment phrase):
+1) After the mandatory scan, map slang or informal terms to the table above to pick the correct PREFIX for each phrase in order.
+2) Read the quantity (digits or words: one, two, three, …), applying QUANTITY PHRASES below.
+3) Expand to individual IDs: for quantity N, output PREFIX1 through PREFIXN (e.g. two items → VH1, VH2).
+
+QUANTITY PHRASES (always interpret these as counts when tied to equipment):
+- "A pair of," "a couple of," and "both" ALWAYS mean quantity 2 (expand to PREFIX1, PREFIX2).
+- "A handful" or "several" with no explicit number: default to quantity 3 for field notes unless the rest of the sentence makes another count obvious; if truly ambiguous, prefer 3 rather than guessing 1 or 2.
+
+Worked example:
+Input meaning: "I checked the two entrance heaters"
+Reason: "entrance heater" maps to Vestibule Heater → VH; quantity two → two IDs.
+equipmentCodes must include: VH1, VH2
+equipmentTypes must include "VH":"Vestibule Heater" (or equivalent clear label).
+
+UNKNOWN / NOT ON THIS LIST:
+If the tech names equipment with no row above (e.g. "The Chiller"), invent a short logical uppercase prefix from the name (e.g. CH for Chiller → CH1, CH2 if quantity 2) and set equipmentTypes[PREFIX] to a readable description. Still expand quantities into separate IDs.
+
+QUANTITY RULE: Never summarize counts. equipmentCodes is always a full comma-separated list of every ID — every ID the dictation implies, in order, with no type omitted.
+
+BACKEND (non-negotiable): After your JSON, the app runs a deterministic scan of the same INPUT for comma/and-separated inventory lines (quantity + equipment type). RTU is checked first. If that scan finds equipment IDs, it overwrites equipmentCodes so list-style dictation (e.g. "3 RTUs, 1 unit heater, …") cannot drop RTUs or other leading items. You must still output a complete correct list yourself — do not rely on this.`;
+
+const EQUIPMENT_LIST_SEGMENT_RULES = [
+  { re: /\brtus?\b|\brooftop\s+units?\b|\bpackage\s+units?\b/i, prefix: "RTU", type: "Rooftop Unit" },
+  { re: /\bunit\s+heaters?\b/i, prefix: "UH", type: "Unit Heater" },
+  { re: /\bradiant\s+heaters?\b/i, prefix: "RH", type: "Radiant Heater" },
+  { re: /\b(exhaust\s+fans?|roof\s+fans?)\b/i, prefix: "EF", type: "Exhaust Fan" },
+  { re: /\bmake-?up\s+air\b|\bmakeup\s+air\b|\bmake\s+up\s+air\b|\bmua\b/i, prefix: "MUA", type: "Make-Up Air Unit" },
+  { re: /\bvestibule\s+heaters?\b/i, prefix: "VH", type: "Vestibule Heater" },
+  { re: /\b(entrance\s+heaters?)\b/i, prefix: "VH", type: "Vestibule Heater" },
+  { re: /\b(hanging\s+heaters?)\b/i, prefix: "UH", type: "Unit Heater" },
+  { re: /\b(condensing\s+units?|ac\s+units?|outdoor\s+units?)\b/i, prefix: "CU", type: "Condensing Unit" },
+  { re: /\b(air\s+handlers?|fan\s+coils?)\b|\bahu\b/i, prefix: "AHU", type: "Air Handler" },
+  { re: /\b(vav\s+boxes?|zone\s+dampers?)\b/i, prefix: "VAV", type: "VAV Box" },
+  { re: /\b(water\s+heaters?|hot\s+water\s+tanks?)\b/i, prefix: "WH", type: "Water Heater" },
+  { re: /\b(mini\s+splits?|ductless\s+units?)\b/i, prefix: "MS", type: "Mini Split" },
+  { re: /\b(furnaces?|closet\s+units?)\b/i, prefix: "F", type: "Furnace" }
+];
+
+function parseQuantityWordForEquipmentList(tok){
+  const t = String(tok || "").toLowerCase().trim();
+  if(t === "both" || t === "pair") return 2;
+  const map = {
+    zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9,
+    ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16,
+    seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20
+  };
+  if(map[t] != null) return map[t];
+  const n = parseInt(t, 10);
+  return Number.isFinite(n) && n >= 0 ? n : 1;
+}
+
+function splitDictationPhrasesForEquipment(text){
+  const out = [];
+  const normalized = String(text).replace(/\r\n/g, "\n");
+  for(const chunk of normalized.split(/\s*,\s*/)){
+    for(const piece of chunk.split(/\s+\band\b\s+/i)){
+      const p = piece.replace(/^\s*and\s+/i, "").trim();
+      if(!p) continue;
+      for(const sub of p.split(/\n+/)){
+        const ln = sub.trim();
+        if(ln) out.push(ln);
+      }
+    }
+  }
+  return out;
+}
+
+function segmentQuantityAndRest(seg){
+  const trimmed = seg.trim();
+  let m = trimmed.match(/^(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\s+/i);
+  if(m){
+    return {
+      qty: Math.max(1, parseQuantityWordForEquipmentList(m[1])),
+      rest: trimmed.slice(m[0].length).trim()
+    };
+  }
+  m = trimmed.match(/\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\s+(rtus?|rooftop\s+units?|package\s+units?|unit\s+heaters?|radiant\s+heaters?|exhaust\s+fans?|roof\s+fans?|make-?up\s+air|makeup\s+air|make\s+up\s+air|mua|vestibule\s+heaters?|entrance\s+heaters?|furnaces?|closet\s+units?)\b/i);
+  if(m){
+    const rest = m[0].replace(/^(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\s+/i, "").trim();
+    return {
+      qty: Math.max(1, parseQuantityWordForEquipmentList(m[1])),
+      rest: rest
+    };
+  }
+  return { qty: 1, rest: trimmed };
+}
+
+function applyDeterministicEquipmentListFromText(rawText, parsed){
+  if(!parsed || typeof parsed !== "object") return;
+  const segments = splitDictationPhrasesForEquipment(rawText);
+  if(!segments.length) return;
+
+  const codes = [];
+  const perPrefix = {};
+  const types = {};
+
+  for(const segRaw of segments){
+    const seg = segRaw.trim();
+    if(!seg) continue;
+
+    const { qty, rest } = segmentQuantityAndRest(seg);
+    const tryRest = rest.length ? rest : seg;
+
+    let matched = false;
+    for(const rule of EQUIPMENT_LIST_SEGMENT_RULES){
+      if(rule.re.test(tryRest)){
+        matched = true;
+        for(let i = 0; i < qty; i++){
+          perPrefix[rule.prefix] = (perPrefix[rule.prefix] || 0) + 1;
+          codes.push(rule.prefix + perPrefix[rule.prefix]);
+        }
+        types[rule.prefix] = rule.type;
+        break;
+      }
+    }
+    if(!matched){
+      for(const rule of EQUIPMENT_LIST_SEGMENT_RULES){
+        if(rule.re.test(seg)){
+          for(let i = 0; i < qty; i++){
+            perPrefix[rule.prefix] = (perPrefix[rule.prefix] || 0) + 1;
+            codes.push(rule.prefix + perPrefix[rule.prefix]);
+          }
+          types[rule.prefix] = rule.type;
+          break;
+        }
+      }
+    }
+  }
+
+  if(codes.length){
+    parsed.equipmentCodes = codes.join(", ");
+    parsed.equipmentTypes = Object.assign({}, types, parsed.equipmentTypes || {});
+  }
+}
+
+async function parseNotesWithAI(rawText){
+  const text = String(rawText || "").trim();
+  if(!text){
+    return {};
+  }
+
+  const key = getGeminiApiKey();
+  if(!key){
+    const out = {};
+    applyDeterministicEquipmentListFromText(text, out);
+    return out;
+  }
+
+  const prompt = `You extract structured HVAC dispatch data from dictated technician notes. Output ONE JSON object only (no markdown).
+
+RULES:
+1. Location: ALWAYS output the "location" string as ALL CAPS in the form CUSTOMER - CITY - STREET (period after abbreviated street end when applicable, e.g. MAIN ST., MAYFAIR RD.). Use ONLY facts from the input. Abbreviate street types (ST, AVE, RD, DR, BLVD, LN, CT, PL, HWY). Training examples — Input: "I'm in Milwaukee at the Planet Fitness on Main Street" -> "PLANET FITNESS - MILWAUKEE - MAIN ST." | Input: "The Main St job in Milwaukee for Planet Fitness" -> "PLANET FITNESS - MILWAUKEE - MAIN ST." | Input: "At Planet Fitness on Main St, Milwaukee" -> "PLANET FITNESS - MILWAUKEE - MAIN ST." | Input: "Wauwatosa location, Planet Fitness on Mayfair Rd" -> "PLANET FITNESS - WAUWATOSA - MAYFAIR RD."
+2. Equipment: Follow ALL SYSTEM rules (mandatory word-by-word scan, RTU priority, list integrity, transposer-not-summarizer). Complements manual entry (on-screen buttons). Expand every quantity into PREFIX+number IDs; include every equipment type mentioned from the first word onward. Include Radiant Heater as RH when stated. OUTPUT: equipmentCodes = one comma-separated string of IDs in spoken order; equipmentTypes = object mapping each PREFIX used to its human-readable type.
+3. Fill other fields only when the information appears in the input; otherwise use "" (empty string).
+4. Map meanings: reasonForCall = reason for visit; findings = diagnosis/findings; laborQuote = labor hours or amount for quote line; serviceUsed/parts = parts used text as dictated.
+
+REQUIRED JSON KEYS (all strings except equipmentTypes):
+{
+  "location": "",
+  "equipmentCodes": "",
+  "equipmentTypes": {},
+  "notes": "",
+  "used": "",
+  "cost": "",
+  "next": "",
+  "workdone": "",
+  "reasonForCall": "",
+  "findings": "",
+  "repairsMade": "",
+  "serviceUsed": "",
+  "serviceCost": "",
+  "quoteParts": "",
+  "laborQuote": "",
+  "recommendations": "",
+  "quoteIssue": "",
+  "quoteRepairs": "",
+  "quoteTesting": "",
+  "quoteRecs": ""
+}
+
+equipmentTypes must be an object map from PREFIX (uppercase letters) to type description string.
+
+INPUT:
+${text}
+`;
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(key)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: GEMINI_EQUIPMENT_SLANG_SYSTEM }] },
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0,
+          responseMimeType: "application/json"
+        }
+      })
+    }
+  );
+
+  if(!response.ok){
+    const errText = await response.text();
+    throw new Error("Gemini API error: " + response.status + " " + errText);
+  }
+
+  const data = await response.json();
+  if(!data.candidates || !data.candidates.length){
+    return {};
+  }
+
+  let aiResponseText = data.candidates[0].content.parts[0].text;
+  aiResponseText = aiResponseText.replace(/```json/gi, "").replace(/```/g, "").trim();
+  const parsed = JSON.parse(aiResponseText);
+  return typeof parsed === "object" && parsed !== null ? parsed : {};
+}
+
+function normalizeEquipmentCodesFromAi(val){
+  if(val == null) return "";
+  if(Array.isArray(val)){
+    return val.map(s => String(s).trim()).filter(Boolean).join(", ");
+  }
+  return String(val).trim();
+}
+
+function applyAiParsedToForm(parsed){
+  if(!parsed || typeof parsed !== "object") return;
+
+  if(parsed.equipmentTypes && typeof parsed.equipmentTypes === "object"){
+    Object.keys(parsed.equipmentTypes).forEach(k => {
+      const key = String(k).toUpperCase();
+      dynamicEquipLabels[key] = String(parsed.equipmentTypes[k] || "").trim() || dynamicEquipLabels[key];
+    });
+  }
+
+  const setIfString = (id, val) => {
+    if(typeof val !== "string") return;
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.value = val;
+    if(el.tagName && el.tagName.toLowerCase() === "textarea"){
+      autoGrow(el);
+    }
+  };
+
+  if(typeof parsed.location === "string" && parsed.location.trim()){
+    const locEl = document.getElementById("location");
+    if(locEl){
+      locEl.value = finalizeLocationLineUppercase(parsed.location.trim());
+    }
+  }
+
+  const codes = normalizeEquipmentCodesFromAi(parsed.equipmentCodes);
+  if(codes){
+    if(currentMode === "PM"){
+      setIfString("equipment", codes);
+    } else if(currentMode === "SERVICE"){
+      setIfString("serviceEquipment", codes);
+    } else if(currentMode === "QUOTE"){
+      setIfString("quoteEquip", codes);
+    }
+  }
+
+  if(currentMode === "PM"){
+    setIfString("notes", parsed.notes);
+    setIfString("used", parsed.used);
+    setIfString("cost", parsed.cost);
+    setIfString("next", parsed.next);
+    setIfString("workdone", parsed.workdone);
+  } else if(currentMode === "SERVICE"){
+    setIfString("reason", parsed.reasonForCall);
+    setIfString("diagnosis", parsed.findings);
+    setIfString("repairsMade", parsed.repairsMade);
+    setIfString("serviceUsed", parsed.serviceUsed);
+    setIfString("serviceCost", parsed.serviceCost);
+    setIfString("quoteParts", parsed.quoteParts);
+    setIfString("quoteLabor", parsed.laborQuote);
+    setIfString("recommendations", parsed.recommendations);
+  } else if(currentMode === "QUOTE"){
+    setIfString("quoteIssue", parsed.quoteIssue);
+    setIfString("quoteRepairs", parsed.quoteRepairs);
+    setIfString("quoteTesting", parsed.quoteTesting);
+    setIfString("quoteRecs", parsed.quoteRecs);
+  }
+
+  saveDraft();
+}
+
 /* ---------- generic helpers ---------- */
 function convertNumbers(text){
   let t = text || "";
@@ -895,6 +1330,13 @@ function expandEquipmentCounts(text){
     out.push(m[1].toUpperCase() + m[2]);
   });
 
+  const genericUnits = [...t.matchAll(/\b([a-z]{1,10})(\d{1,3})\b/gi)];
+  genericUnits.forEach(m => {
+    const idx = m.index != null ? m.index : 0;
+    if(idx > 0 && /\d/.test(t[idx - 1])) return;
+    out.push(m[1].toUpperCase() + m[2]);
+  });
+
   const unique = [];
   out.forEach(x => {
     if(!unique.includes(x)) unique.push(x);
@@ -913,7 +1355,7 @@ function expandEquipment(codeCsv){
   return codes.map(c => {
     const m = c.match(/^([A-Z]+)(\d+)$/);
     if(!m) return c;
-    const label = EQUIP_LABELS[m[1]] || m[1];
+    const label = EQUIP_LABELS[m[1]] || dynamicEquipLabels[m[1]] || m[1];
     return `${m[1]}${m[2]} (${label})`;
   }).join("\n");
 }
@@ -1620,7 +2062,26 @@ document.getElementById("same").onclick = function(){
   formatNextField();
 };
 
-document.getElementById("generate").onclick = function(){
+document.getElementById("generate").onclick = async function(){
+  const dictation = buildDictationForAi();
+  if(dictation.trim()){
+    try{
+      const parsed = await parseNotesWithAI(dictation);
+      applyAiParsedToForm(parsed);
+    }catch(err){
+      console.warn("parseNotesWithAI:", err);
+      const fallback = {};
+      applyDeterministicEquipmentListFromText(dictation, fallback);
+      applyAiParsedToForm(fallback);
+    }
+    const overlay = {};
+    applyDeterministicEquipmentListFromText(dictation, overlay);
+    if(overlay.equipmentCodes){
+      const o = { equipmentCodes: overlay.equipmentCodes, equipmentTypes: overlay.equipmentTypes || {} };
+      applyAiParsedToForm(o);
+    }
+  }
+
   autoParseLocation();
   const location = document.getElementById("location").value || "[Location]";
   const date = today();
@@ -1687,7 +2148,7 @@ document.getElementById("generate").onclick = function(){
     const quoteLabor = document.getElementById("quoteLabor").value.trim() || "NONE";
     const recommendations = document.getElementById("recommendations").value.trim() || "None.";
 
-    report = `SERVICE CALL\n\nLocation:\n${location}\n\nDate:\n${date}\n\nEquipment worked on:\n${serviceEquipDisplay}\n\nReason for call:\n${reason}\n\nFindings / Diagnosis:\n${diagnosis}\n\nRepairs made:\n${repairsMade}\n\nParts used:\n${used}\n\nCost of parts (if known):\n${cost}\n\nParts needed for repair quote:\n${quoteParts}\n\nLabor for repair quote:\n${quoteLabor}\n\nRecommendations / Next steps:\n${recommendations}\n\nPictures:\nNameplate photos attached.\n`;
+    report = `SERVICE CALL\n\nLocation:\n${location}\n\nDate:\n${date}\n\nEquipment worked on:\n${serviceEquipDisplay}\n\nReason for call:\n${reason}\n\nFindings / Diagnosis:\n${diagnosis}\n\nRepairs made:\n${repairsMade}\n\nParts used:\n${used}\n\nCost of parts (if known):\n${cost}\n\nParts needed for repair quote:\n${quoteParts}\n\nLabor for repair quote:\n${quoteLabor}\n\nFurther Recommendations:\n${recommendations}\n\nPictures:\nNameplate photos attached.\n`;
 
     visit = {
       date,
@@ -1768,6 +2229,8 @@ document.getElementById("clear").onclick = function(){
 
   if(!confirm("Clear current mode fields?")) return;
 
+  dynamicEquipLabels = {};
+
   document.getElementById("location").value = "";
   document.getElementById("output").textContent = "";
 
@@ -1821,20 +2284,26 @@ document.getElementById("clear").onclick = function(){
   saveDraft();
 };
 
-/* Unified Add Equipment function */
+function escapeRegex(str){
+  return String(str || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/* Unified Add Equipment function (prefix = letters only, any length) */
 function addEquipmentCode(fieldId, prefix){
   const el = document.getElementById(fieldId);
   const current = (el.value || "").trim();
   const codes = parseEquipCodes(current);
   let max = 0;
 
+  const safePrefix = escapeRegex(String(prefix || "").toUpperCase());
   codes.forEach(c => {
-    const m = c.match(new RegExp("^" + prefix + "(\\d+)$"));
+    const m = c.match(new RegExp("^" + safePrefix + "(\\d+)$", "i"));
     if(m) max = Math.max(max, parseInt(m[1], 10));
   });
 
   const nextNum = max + 1;
-  const appendText = current ? current + ", " + prefix + nextNum : prefix + nextNum;
+  const p = String(prefix || "").toUpperCase();
+  const appendText = current ? current + ", " + p + nextNum : p + nextNum;
   el.value = appendText;
   autoGrow(el);
   saveDraft();
